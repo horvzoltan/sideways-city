@@ -14,7 +14,7 @@ The game loads its engine sound from `assets/`, so open it through a local web s
 
 ## Controller
 
-Any standard gamepad (Xbox, PlayStation, Steam Deck) works in the browser and the desktop app: left stick or D-pad steers, RT gas, LT brake, A or RB handbrake, Y resets the car, Start pauses. In menus the stick or D-pad moves the selection, A picks, B goes back. The code is the gamepad section of `js/game.js`.
+Any standard gamepad (Xbox, PlayStation, Steam Deck) works in the browser and the desktop app: left stick or D-pad steers, RT gas and LT brake (both analog: a light pull gives a little throttle or braking, like pedals), A or RB handbrake, Y resets the car, Start pauses. In menus the stick or D-pad moves the selection, A picks, B goes back. The code is the gamepad section of `js/game.js`.
 
 ## Desktop app (Electron)
 

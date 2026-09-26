@@ -190,14 +190,18 @@ function steerInput(){
 addEventListener('blur',()=>{ for(const k in keys) keys[k]=false; setSteer(0); });
 
 // ---------- gamepad (standard layout: Xbox / PlayStation / Steam Deck) ----------
-// Driving: left stick or D-pad steers, RT gas, LT brake, A or RB handbrake, Y resets, Start pauses.
+// Driving: left stick or D-pad steers, RT gas and LT brake (analog, like pedals), A or RB handbrake, Y resets, Start pauses.
 // Menus: stick or D-pad moves focus, A selects, B goes back.
 const PAD={A:0,B:1,Y:3,RB:5,LT:6,RT:7,START:9,UP:12,DOWN:13,LEFT:14,RIGHT:15};
-let padSteer=0, padPrev={}, padHeld={}, navDir=null, navT=0;
+let padSteer=0, padThr=0, padBrk=0, padPrev={}, padHeld={}, navDir=null, navT=0;
+// pedal amount 0..1: keyboard and touch are all-or-nothing, a controller trigger is analog
+const throttleIn=()=>Math.max(keys.up?1:0,padThr), brakeIn=()=>Math.max(keys.down?1:0,padBrk);
 function padButtons(gp){
-  const b=i=>{ const x=gp.buttons[i]; return x?(typeof x==='object'?x.value>0.35||x.pressed:x>0.35):false; };
+  const v=i=>{ const x=gp.buttons[i]; return x?(typeof x==='object'?(x.value||(x.pressed?1:0)):x):0; };
+  const b=i=>v(i)>0.35;
+  const pedal=i=>{ const x=v(i), dz=0.04; return x<dz?0:Math.min(1,(x-dz)/(0.97-dz)); };   // small dead zone, full at the stop
   const ax=gp.axes[0]||0, ay=gp.axes[1]||0;
-  return {up:b(PAD.RT), down:b(PAD.LT), hand:b(PAD.A)||b(PAD.RB), a:b(PAD.A), b:b(PAD.B), y:b(PAD.Y), start:b(PAD.START),
+  return {thr:pedal(PAD.RT), brk:pedal(PAD.LT), hand:b(PAD.A)||b(PAD.RB), a:b(PAD.A), b:b(PAD.B), y:b(PAD.Y), start:b(PAD.START),
     nav:b(PAD.UP)||ay<-0.6?'up':b(PAD.DOWN)||ay>0.6?'down':b(PAD.LEFT)||ax<-0.6?'left':b(PAD.RIGHT)||ax>0.6?'right':null,
     steer:b(PAD.LEFT)?-1:b(PAD.RIGHT)?1:ax};
 }
@@ -222,10 +226,11 @@ function navMove(dir){
 }
 function pollPad(dt){
   const gp=[...(navigator.getGamepads?navigator.getGamepads():[])].find(g=>g&&g.connected);
-  if(!gp){ padSteer=0; return; }
+  if(!gp){ padSteer=0; padThr=0; padBrk=0; return; }
   const p=padButtons(gp), pressed=k=>p[k]&&!padPrev[k];
   // driving inputs: only touch keys[] when the pad's own state changes, so the keyboard keeps working
-  for(const k of ['up','down','hand']) if(p[k]!==!!padHeld[k]){ padHeld[k]=p[k]; keys[k]=p[k]; }
+  if(p.hand!==!!padHeld.hand){ padHeld.hand=p.hand; keys.hand=p.hand; }
+  padThr=p.thr; padBrk=p.brk;
   const a=Math.abs(p.steer), dz=0.15;
   padSteer=a<dz?0:Math.sign(p.steer)*Math.pow((a-dz)/(1-dz),1.4);
   const menu=activeOverlay();
@@ -324,13 +329,14 @@ function scheduleGrains(){
 function updateAudio(dt){
   const s=aIn.speed; let thr=aIn.throttle;
   if(es.cut>0){ es.cut-=dt; thr=0; }
+  const on=thr>0.15;
   let wr=s/GEAR_TOP[es.gear]*REDLINE;
-  if(wr>6750 && es.gear<5 && aIn.throttle){ es.gear++; es.cut=0.16; if(Math.random()<0.6) crackle(); }
+  if(wr>6750 && es.gear<5 && aIn.throttle>0.15){ es.gear++; es.cut=0.16; if(Math.random()<0.6) crackle(); }
   else if(es.gear>0 && wr<2600 && s/GEAR_TOP[es.gear-1]*REDLINE<6000) es.gear--;
   wr=s/GEAR_TOP[es.gear]*REDLINE;
   let target=Math.max(IDLE,wr);
-  if(thr && s<60) target=Math.max(target,4300);
-  if(thr && aIn.slip>150) target+=1000*Math.min(1,(aIn.slip-150)/200);
+  if(on && s<60) target=Math.max(target,IDLE+(4300-IDLE)*thr);
+  if(on && aIn.slip>150) target+=1000*Math.min(1,(aIn.slip-150)/200);
   target=Math.min(LIMIT,target);
   es.rpm+=(target-es.rpm)*Math.min(1,(target>es.rpm?9:5)*dt);
   es.load+=(thr-es.load)*Math.min(1,10*dt);
@@ -338,18 +344,18 @@ function updateAudio(dt){
 
   const t=AC.currentTime;
   let lim=1;
-  if(thr && es.rpm>6950){ es.limT+=dt; lim=(Math.floor(es.limT*24)%2)?0.3:1; } else es.limT=0;
+  if(on && es.rpm>6950){ es.limT+=dt; lim=(Math.floor(es.limT*24)%2)?0.3:1; } else es.limT=0;
   layerOn.gain.setTargetAtTime(es.load*0.9,t,0.03);
   layerOff.gain.setTargetAtTime((1-es.load)*0.75,t,0.03);
   engBus.gain.setTargetAtTime(lim,t,0.01);
   scheduleGrains();
 
   // blow-off valve and pops still come from the synth, layered on top of the recording
-  const bt=thr?Math.min(1,Math.max(0,(es.rpm-2500)/3000)):0;
+  const bt=on?thr*Math.min(1,Math.max(0,(es.rpm-2500)/3000)):0;
   es.boost+=(bt-es.boost)*Math.min(1,(bt>es.boost?1.4:5)*dt);
-  if(es.prevThr && !thr && es.boost>0.3) blowOff(es.boost);
-  es.prevThr=thr;
-  if(!aIn.throttle && es.rpm>3400 && Math.random()<dt*5) crackle();
+  if(es.prevThr && !on && es.boost>0.3) blowOff(es.boost);
+  es.prevThr=on;
+  if(aIn.throttle<0.15 && es.rpm>3400 && Math.random()<dt*5) crackle();
 
   const onGrass=aIn.surf===GRASS;
   let sk=Math.min(1,Math.max(0,(aIn.slip-90)/280)); if(onGrass) sk*=0.25;
@@ -514,14 +520,15 @@ function update(dt){
   let vf=car.vx*fx+car.vy*fy, vr=car.vx*rx+car.vy*ry;
   const surf=surfAt(car.x,car.y), g=GRIP[surf];
 
-  if(keys.up) vf += (vf<0?1100:540)*dt*(0.6+0.4*g);
-  if(keys.down) vf -= (vf>20?950:320)*dt;
+  const thr=throttleIn(), brk=brakeIn();
+  if(thr) vf += (vf<0?1100:540)*thr*dt*(0.6+0.4*g);
+  if(brk) vf -= (vf>20?950:320)*brk*dt;
   vf = Math.max(-220, Math.min(640, vf));
   vf -= vf*(0.5 + (soft(surf)?1.2:0))*dt;
   if(keys.hand) vf -= Math.sign(vf)*Math.min(Math.abs(vf),170*dt);
-  if(!keys.up && !keys.down && Math.abs(vf)<8) vf=0;
+  if(!thr && !brk && Math.abs(vf)<8) vf=0;
 
-  let grip = keys.hand ? 1.0 : (keys.up && vf>260 ? 3.0 : 7.5);
+  let grip = keys.hand ? 1.0 : (vf>260 ? 7.5-4.5*thr : 7.5);   // more throttle, looser rear
   grip*=g; vr *= Math.exp(-grip*dt);
 
   const speed=Math.hypot(vf,vr);
@@ -561,7 +568,7 @@ function update(dt){
   if(mode==='track' && state==='race') trackTick(dt,drifting,surf);
 
   // skids and smoke
-  const skidding = Math.abs(vr)>110 || (keys.hand && speed>90) || (keys.up && Math.abs(vf)<120 && Math.abs(vf)>5 && !soft(surf));
+  const skidding = Math.abs(vr)>110 || (keys.hand && speed>90) || (thr>0.7 && Math.abs(vf)<120 && Math.abs(vf)>5 && !soft(surf));
   const nfx=Math.cos(car.a), nfy=Math.sin(car.a);
   const bx=car.x-nfx*14, by=car.y-nfy*14;
   const wl={x:bx-nfy*9, y:by+nfx*9}, wr={x:bx+nfy*9, y:by-nfx*9};
@@ -577,7 +584,7 @@ function update(dt){
   for(let i=smoke.length-1;i>=0;i--){ const s=smoke[i]; s.life-=dt*1.4; s.r+=dt*22; s.x+=s.vx*dt; s.y+=s.vy*dt; if(s.life<=0) smoke.splice(i,1); }
 
   shake=Math.max(0,shake-dt*30);
-  aIn.speed=Math.abs(vf); aIn.slip=Math.abs(vr)+(keys.hand&&speed>90?120:0); aIn.surf=soft(surf)?GRASS:surf; aIn.throttle=keys.up?1:0;
+  aIn.speed=Math.abs(vf); aIn.slip=Math.abs(vr)+(keys.hand&&speed>90?120:0); aIn.surf=soft(surf)?GRASS:surf; aIn.throttle=thr;
   return speed;
 }
 
@@ -794,7 +801,7 @@ function renderCity(hw,hh){
   for(const s of skids){ ctx.moveTo(s[0],s[1]); ctx.lineTo(s[2],s[3]); }
   ctx.stroke();
 
-  drawCar(car.x,car.y,car.a,car.w,keys.down);
+  drawCar(car.x,car.y,car.a,car.w,brakeIn()>0.1);
   for(const s of smoke){ ctx.fillStyle=`rgba(225,222,215,${s.life*0.28})`; ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,7); ctx.fill(); }
 
   // buildings, palms and umbrellas with fake perspective: tops pushed away from the camera, far ones first
@@ -839,7 +846,7 @@ function renderTrack(hw,hh){
     ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(c.x,c.y,4,0,7); ctx.fill();
   }
   if(run) drawGhost();
-  drawCar(car.x,car.y,car.a,car.w,keys.down);
+  drawCar(car.x,car.y,car.a,car.w,brakeIn()>0.1);
   for(const sm of smoke){ ctx.fillStyle=`rgba(225,222,215,${sm.life*0.28})`; ctx.beginPath(); ctx.arc(sm.x,sm.y,sm.r,0,7); ctx.fill(); }
   const vis=decos.filter(d=>{ const x=d.cx??d.x, y=d.cy??d.y; return Math.abs(x-cam.x)<hw+200 && Math.abs(y-cam.y)<hh+200; });
   vis.sort((a,b)=>Math.hypot((b.cx??b.x)-cam.x,(b.cy??b.y)-cam.y)-Math.hypot((a.cx??a.x)-cam.x,(a.cy??a.y)-cam.y));
@@ -909,7 +916,7 @@ function frame(t){
     speed=update(dt); updateAudio(dt);
     if(state==='race'){ run.t+=dt; recordGhost(); if(run.t>=T.limit) finish(false); }
   } else if(state==='count'){
-    countT-=dt; aIn.speed=0; aIn.slip=0; aIn.throttle=keys.up?1:0; updateAudio(dt);
+    countT-=dt; aIn.speed=0; aIn.slip=0; aIn.throttle=throttleIn(); updateAudio(dt);
     const n=Math.ceil(countT);
     if(n!==lastBeep && n<=3 && n>0){ lastBeep=n; sfxNotes([523],'square',0.12,0.1); }
     $('bn').textContent=n>3?'':String(n);

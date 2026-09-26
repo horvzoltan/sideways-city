@@ -182,11 +182,67 @@ steerEl.addEventListener('pointerup',steerEnd); steerEl.addEventListener('pointe
 function steerInput(){
   const digital=(keys.left?-1:0)+(keys.right?1:0);
   if(digital) return digital;
+  if(padSteer) return padSteer;
   const a=Math.abs(touchSteer), dz=0.06;
   if(a<dz) return 0;
   return Math.sign(touchSteer)*Math.pow((a-dz)/(1-dz),1.4);   // finer control near the centre
 }
 addEventListener('blur',()=>{ for(const k in keys) keys[k]=false; setSteer(0); });
+
+// ---------- gamepad (standard layout: Xbox / PlayStation / Steam Deck) ----------
+// Driving: left stick or D-pad steers, RT gas, LT brake, A or RB handbrake, Y resets, Start pauses.
+// Menus: stick or D-pad moves focus, A selects, B goes back.
+const PAD={A:0,B:1,Y:3,RB:5,LT:6,RT:7,START:9,UP:12,DOWN:13,LEFT:14,RIGHT:15};
+let padSteer=0, padPrev={}, padHeld={}, navDir=null, navT=0;
+function padButtons(gp){
+  const b=i=>{ const x=gp.buttons[i]; return x?(typeof x==='object'?x.value>0.35||x.pressed:x>0.35):false; };
+  const ax=gp.axes[0]||0, ay=gp.axes[1]||0;
+  return {up:b(PAD.RT), down:b(PAD.LT), hand:b(PAD.A)||b(PAD.RB), a:b(PAD.A), b:b(PAD.B), y:b(PAD.Y), start:b(PAD.START),
+    nav:b(PAD.UP)||ay<-0.6?'up':b(PAD.DOWN)||ay>0.6?'down':b(PAD.LEFT)||ax<-0.6?'left':b(PAD.RIGHT)||ax>0.6?'right':null,
+    steer:b(PAD.LEFT)?-1:b(PAD.RIGHT)?1:ax};
+}
+function activeOverlay(){
+  for(const id of ['settings','result','start']){ const el=$(id); if(getComputedStyle(el).display!=='none') return el; }
+  return null;
+}
+function navMove(dir){
+  const root=activeOverlay(); if(!root) return;
+  const items=[...root.querySelectorAll('button,input')].filter(el=>!el.disabled&&!el.hidden&&el.offsetParent!==null&&el.tabIndex>=0);
+  const cur=document.activeElement;
+  if(!items.includes(cur)){ (items.find(el=>el.classList.contains('stage'))||items.find(el=>el.classList.contains('btn'))||items[0])?.focus(); return; }
+  const r=cur.getBoundingClientRect(), cx=r.left+r.width/2, cy=r.top+r.height/2;
+  const [dx,dy]={up:[0,-1],down:[0,1],left:[-1,0],right:[1,0]}[dir];
+  let best=null, bestScore=1e9;
+  for(const el of items){ if(el===cur) continue;
+    const q=el.getBoundingClientRect(), ex=q.left+q.width/2-cx, ey=q.top+q.height/2-cy, along=ex*dx+ey*dy, perp=Math.abs(ex*dy-ey*dx);
+    if(along<=4) continue;
+    if(dx ? (q.bottom<=r.top||q.top>=r.bottom) : perp>along*1.5) continue;   // left/right stay in the row
+    const score=along+perp*2.5; if(score<bestScore){ bestScore=score; best=el; } }
+  best?.focus();
+}
+function pollPad(dt){
+  const gp=[...(navigator.getGamepads?navigator.getGamepads():[])].find(g=>g&&g.connected);
+  if(!gp){ padSteer=0; return; }
+  const p=padButtons(gp), pressed=k=>p[k]&&!padPrev[k];
+  // driving inputs: only touch keys[] when the pad's own state changes, so the keyboard keeps working
+  for(const k of ['up','down','hand']) if(p[k]!==!!padHeld[k]){ padHeld[k]=p[k]; keys[k]=p[k]; }
+  const a=Math.abs(p.steer), dz=0.15;
+  padSteer=a<dz?0:Math.sign(p.steer)*Math.pow((a-dz)/(1-dz),1.4);
+  const menu=activeOverlay();
+  if(menu){
+    document.body.classList.add('pad-nav');
+    if(p.nav!==navDir){ navDir=p.nav; navT=0.35; if(navDir) navMove(navDir); }
+    else if(navDir){ navT-=dt; if(navT<=0){ navT=0.12; navMove(navDir); } }
+    if(pressed('a')){ const el=document.activeElement; if(menu.contains(el)&&el!==document.body) el.click(); else navMove('down'); }
+    if(pressed('b')||(state==='pause'&&pressed('start'))){ if(state==='pause') resume(); else if(menu.id==='result') showMenu(); }
+  } else {
+    if(pressed('start')){ pause(); if(state==='pause') $('resume').focus(); }
+    if(pressed('y')&&(state==='race'||state==='free')){ wreck(); resetCar(); }
+  }
+  padPrev=p;
+}
+addEventListener('pointermove',()=>document.body.classList.remove('pad-nav'));
+addEventListener('pointerdown',()=>document.body.classList.remove('pad-nav'));
 
 // ---------- effects ----------
 const skids=[]; const MAX_SKIDS=3000; let prevWheels=null;
@@ -847,6 +903,7 @@ function silence(){
 }
 function frame(t){
   const dt=Math.min(1/30,(t-last)/1000||0); last=t;
+  pollPad(dt);
   let speed=Math.hypot(car.vx,car.vy);
   if(state==='race'||state==='free'){
     speed=update(dt); updateAudio(dt);
@@ -902,6 +959,7 @@ function startCity(){
   resetCar(); cam.x=car.x; cam.y=car.y; state='free'; bannerEl.style.display='none'; initAudio();
 }
 function showMenu(){
+  if(state==='pause'&&!isTouch) setPauseLayout(false);
   state='menu'; pausedFrom=null; silence(); bannerEl.style.display='none'; $('result').style.display='none'; $('settings').style.display='none';
   renderStageGrid(); $('start').style.display='flex';
 }
@@ -943,8 +1001,14 @@ let pausedFrom=null;
 function pause(){ if(state!=='race'&&state!=='free'&&state!=='count') return;
   pausedFrom=state; state='pause'; for(const k in keys) keys[k]=false; setSteer(0); silence();
   document.querySelectorAll('.touch button.on').forEach(b=>b.classList.remove('on'));
+  if(!isTouch) setPauseLayout(true);
   $('settings').style.display='flex'; }
-function resume(){ if(state!=='pause') return; state=pausedFrom; pausedFrom=null; $('settings').style.display='none'; }
+function resume(){ if(state!=='pause') return; state=pausedFrom; pausedFrom=null; $('settings').style.display='none'; if(!isTouch) setPauseLayout(false); }
+function setPauseLayout(on){   // desktop: HUD buttons move into the pause panel and back
+  const audio=$('audio');
+  if(on) $('sheetSlot').appendChild(audio); else $('pauseBtn').parentNode.before(audio);
+  $('menuBtn').textContent=on?'Quit to stages':'Menu'; $('resetBtn').textContent=on?'Reset car':'Reset';
+}
 $('pauseBtn').addEventListener('click',pause);
 $('resume').addEventListener('click',resume);
 $('resetT').addEventListener('click',e=>{ e.currentTarget.blur(); if(state==='race'||state==='free'){ wreck(); resetCar(); } });

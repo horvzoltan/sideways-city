@@ -144,3 +144,7 @@ body.is-touch .touch-hud{display:flex}
   #start h2{grid-row:1;align-self:end}.stages{grid-row:2/4}#free{grid-row:4}#start .credit{grid-row:5}
   #start .keys-only{display:none}
 }
+
+/* controller: make the focused menu item obvious */
+body.pad-nav .overlay button:focus,body.pad-nav .overlay input:focus{outline:3px solid var(--accent);outline-offset:3px}
+body.pad-nav .swatch:focus{box-shadow:0 0 0 3px var(--accent)}

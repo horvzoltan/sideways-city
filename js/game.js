@@ -206,7 +206,7 @@ function padButtons(gp){
     steer:b(PAD.LEFT)?-1:b(PAD.RIGHT)?1:ax};
 }
 function activeOverlay(){
-  for(const id of ['settings','result','start']){ const el=$(id); if(getComputedStyle(el).display!=='none') return el; }
+  for(const id of ['levelup','settings','result','start']){ const el=$(id); if(getComputedStyle(el).display!=='none') return el; }
   return null;
 }
 function navMove(dir){
@@ -250,6 +250,8 @@ addEventListener('pointermove',()=>document.body.classList.remove('pad-nav'));
 addEventListener('pointerdown',()=>document.body.classList.remove('pad-nav'));
 
 // ---------- effects ----------
+const perf={acc:1,top:1,smoke:1,smokeLife:1};   // survival upgrades tweak these; 1 everywhere else
+const resetPerf=()=>Object.assign(perf,{acc:1,top:1,smoke:1,smokeLife:1});
 const skids=[]; const MAX_SKIDS=3000; let prevWheels=null;
 const smoke=[];
 let shake=0;
@@ -521,9 +523,9 @@ function update(dt){
   const surf=surfAt(car.x,car.y), g=GRIP[surf];
 
   const thr=throttleIn(), brk=brakeIn();
-  if(thr) vf += (vf<0?1100:540)*thr*dt*(0.6+0.4*g);
+  if(thr) vf += (vf<0?1100:540*perf.acc)*thr*dt*(0.6+0.4*g);
   if(brk) vf -= (vf>20?950:320)*brk*dt;
-  vf = Math.max(-220, Math.min(640, vf));
+  vf = Math.max(-220, Math.min(640*perf.top, vf));
   vf -= vf*(0.5 + (soft(surf)?1.2:0))*dt;
   if(keys.hand) vf -= Math.sign(vf)*Math.min(Math.abs(vf),170*dt);
   if(!thr && !brk && Math.abs(vf)<8) vf=0;
@@ -579,9 +581,9 @@ function update(dt){
     }
     prevWheels=[wl,wr];
     if(Math.random()<0.6) smoke.push({x:(Math.random()<.5?wl:wr).x,y:(Math.random()<.5?wl:wr).y,
-      vx:(Math.random()-.5)*30, vy:(Math.random()-.5)*30, r:6+Math.random()*6, life:1});
+      vx:(Math.random()-.5)*30, vy:(Math.random()-.5)*30, r:(6+Math.random()*6)*perf.smoke, life:1});
   } else prevWheels=null;
-  for(let i=smoke.length-1;i>=0;i--){ const s=smoke[i]; s.life-=dt*1.4; s.r+=dt*22; s.x+=s.vx*dt; s.y+=s.vy*dt; if(s.life<=0) smoke.splice(i,1); }
+  for(let i=smoke.length-1;i>=0;i--){ const s=smoke[i]; s.life-=dt*1.4/perf.smokeLife; s.r+=dt*22*perf.smoke; s.x+=s.vx*dt; s.y+=s.vy*dt; if(s.life<=0) smoke.splice(i,1); }
 
   shake=Math.max(0,shake-dt*30);
   aIn.speed=Math.abs(vf); aIn.slip=Math.abs(vr)+(keys.hand&&speed>90?120:0); aIn.surf=soft(surf)?GRASS:surf; aIn.throttle=thr;
@@ -686,7 +688,7 @@ function shade(hex,f){ const n=parseInt(hex.slice(1),16); const c=[n>>16,(n>>8)&
 function render(speed){
   ctx.setTransform(DPR,0,0,DPR,0,0);
   ctx.fillStyle=mode==='track'?theme.out:SEA; ctx.fillRect(0,0,W,H);
-  const scaleBase=Math.min(1.15,Math.max(0.75,Math.min(W,H)/620))*(mode==='track'?0.8:1);
+  const scaleBase=Math.min(1.15,Math.max(0.75,Math.min(W,H)/620))*(mode==='track'?0.8:surv?0.85:1);
   const tz=scaleBase*(1.1-Math.min(0.38,speed/1500));
   cam.z+=(tz-cam.z)*0.04;
   const tx=car.x+car.vx*0.35, ty=car.y+car.vy*0.35;
@@ -696,6 +698,7 @@ function render(speed){
   ctx.translate(W/2+sx,H/2+sy); ctx.scale(cam.z,cam.z); ctx.translate(-cam.x,-cam.y);
   const hw=W/2/cam.z+TILE, hh=H/2/cam.z+TILE;
   if(mode==='city') renderCity(hw,hh); else renderTrack(hw,hh);
+  if(surv) survOverlay();
   if(mode==='track' && theme.night){
     ctx.setTransform(DPR,0,0,DPR,0,0);
     const fx=car.x+Math.cos(car.a)*70, fy=car.y+Math.sin(car.a)*70;
@@ -800,9 +803,11 @@ function renderCity(hw,hh){
   ctx.strokeStyle='rgba(18,18,20,.38)'; ctx.lineWidth=4; ctx.lineCap='round'; ctx.beginPath();
   for(const s of skids){ ctx.moveTo(s[0],s[1]); ctx.lineTo(s[2],s[3]); }
   ctx.stroke();
+  if(surv) survDrawGround(hw,hh);
 
   drawCar(car.x,car.y,car.a,car.w,brakeIn()>0.1);
-  for(const s of smoke){ ctx.fillStyle=`rgba(225,222,215,${s.life*0.28})`; ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,7); ctx.fill(); }
+  for(const s of smoke){ ctx.fillStyle=surv&&surv.up.toxic?`rgba(170,230,120,${s.life*0.3})`:`rgba(225,222,215,${s.life*0.28})`; ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,7); ctx.fill(); }
+  if(surv) survDrawFx();
 
   // buildings, palms and umbrellas with fake perspective: tops pushed away from the camera, far ones first
   const vis=scenery.filter(d=>Math.abs(d.cx-cam.x)<hw+300 && Math.abs(d.cy-cam.y)<hh+300);
@@ -891,12 +896,362 @@ function buildMini(){
 }
 function drawMini(){
   mctx.setTransform(1,0,0,1,0,0); mctx.clearRect(0,0,280,280); mctx.drawImage(miniBg,0,0);
+  if(surv){ mctx.fillStyle='#ff4f4f'; for(const e of surv.enemies){ const r=e.type==='boss'?5:2; mctx.fillRect(e.x*mm.s+mm.ox-r/2,e.y*mm.s+mm.oy-r/2,r,r); } }
   const gh=mode==='track'&&ghostAt(state==='count'?0:run&&run.t);
   if(gh){ mctx.fillStyle='rgba(191,233,255,.85)'; mctx.beginPath(); mctx.arc(gh.x*mm.s+mm.ox,gh.y*mm.s+mm.oy,6,0,7); mctx.fill(); }
   const x=car.x*mm.s+mm.ox, y=car.y*mm.s+mm.oy;
   mctx.translate(x,y); mctx.rotate(car.a); mctx.scale(1.4,1.4);
   mctx.fillStyle=paint.base; mctx.strokeStyle='#fff'; mctx.lineWidth=2.5;
   mctx.beginPath(); mctx.moveTo(12,0); mctx.lineTo(-8,-8); mctx.lineTo(-4,0); mctx.lineTo(-8,8); mctx.closePath(); mctx.fill(); mctx.stroke();
+}
+
+// ---------- survival mode: "Survive the night" ----------
+// Hordes chase the car through the city at night. Ramming, tyre smoke and upgrades kill them, and
+// the drift combo multiplies all damage. Kills drop XP gems; each level-up offers 3 upgrade cards.
+// Last SURV_LEN seconds to win. Enemies use a spatial hash so a few hundred stay cheap.
+const SURV_LEN=600, BOSS_T=450, MAXL=5, CELL=80;
+let surv=null;
+const ETYPES={
+  walker:{r:11,hp:20,spd:78,dmg:6,xp:1,col:'#6f9a52'},
+  runner:{r:9,hp:12,spd:150,dmg:5,xp:1,col:'#b8bf78'},
+  brute:{r:18,hp:110,spd:52,dmg:16,xp:5,col:'#7b5a8c'},
+  boss:{r:24,hp:1600,spd:125,dmg:30,xp:40,col:'#f4f4f2'},
+};
+const UPGRADES={   // desc(l) describes the level you would get
+  fire:{name:'Flaming tyres',desc:l=>'Skid marks burn enemies for '+(14+8*l)+' damage a second.'},
+  toxic:{name:'Toxic smoke',desc:l=>'Tyre smoke is bigger and does '+(40*l)+'% more damage.'},
+  bumper:{name:'Spiked bumper',desc:l=>(40*l)+'% more ramming damage and harder knockback.'},
+  tesla:{name:'Tesla coil',desc:l=>'Zaps the '+(l>1?l+' nearest enemies':'nearest enemy')+' every '+(1.7-0.2*l).toFixed(1)+' s.'},
+  oil:{name:'Oil slick',desc:l=>'Drops oil every '+Math.max(1.2,3.2-0.4*l).toFixed(1)+' s that slows enemies to a crawl.'},
+  burner:{name:'Afterburner',desc:l=>'Exhaust flames scorch anything behind you while on the gas.'},
+  magnet:{name:'Magnet',desc:l=>'Collect XP from '+(70+45*l)+' px away.'},
+  armour:{name:'Armour plating',desc:l=>'+25 max health, '+(8*l)+'% less damage taken, repairs 25.'},
+  tune:{name:'Engine tune',desc:l=>(8*l)+'% more acceleration and top speed.'},
+  inferno:{name:'Inferno drift',desc:()=>'Evolution: tyre smoke sets the ground on fire and does double damage.'},
+};
+const policePaint=makePaint('#f4f4f2');
+const xpNeed=l=>4+l*2+Math.floor(l*l*0.3);
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+
+// static walls by tile, so enemies only test the solids near them
+let solidGrid=null;
+function buildSolidGrid(){
+  solidGrid=Array.from({length:MW*MH},()=>[]);
+  for(const b of solids){
+    const tx0=Math.max(0,Math.floor(b.x/TILE)), tx1=Math.min(MW-1,Math.floor((b.x+b.w)/TILE));
+    const ty0=Math.max(0,Math.floor(b.y/TILE)), ty1=Math.min(MH-1,Math.floor((b.y+b.h)/TILE));
+    for(let y=ty0;y<=ty1;y++) for(let x=tx0;x<=tx1;x++) solidGrid[y*MW+x].push(b);
+  }
+}
+function pushOutSolids(e){
+  const tx=Math.floor(e.x/TILE), ty=Math.floor(e.y/TILE);
+  for(let y=ty-1;y<=ty+1;y++) for(let x=tx-1;x<=tx+1;x++){
+    if(x<0||y<0||x>=MW||y>=MH) continue;
+    for(const b of solidGrid[y*MW+x]){
+      const px=clamp(e.x,b.x,b.x+b.w), py=clamp(e.y,b.y,b.y+b.h), dx=e.x-px, dy=e.y-py, d=Math.hypot(dx,dy);
+      if(d>=e.r) continue;
+      if(d>0.01){ e.x+=dx/d*(e.r-d); e.y+=dy/d*(e.r-d); continue; }
+      const L=e.x-b.x, R=b.x+b.w-e.x, U=e.y-b.y, D=b.y+b.h-e.y, m=Math.min(L,R,U,D);   // inside: leave by the nearest edge
+      if(m===L) e.x=b.x-e.r; else if(m===R) e.x=b.x+b.w+e.r; else if(m===U) e.y=b.y-e.r; else e.y=b.y+b.h+e.r;
+    }
+  }
+  e.x=clamp(e.x,e.r,WORLD_W-e.r); e.y=clamp(e.y,e.r,WORLD_H-e.r);
+}
+function blockedAt(x,y,r){
+  if(tileAt(x,y)===WATER) return true;
+  const tx=Math.floor(x/TILE), ty=Math.floor(y/TILE);
+  for(const b of solidGrid[ty*MW+tx]||[]) if(x+r>b.x&&x-r<b.x+b.w&&y+r>b.y&&y-r<b.y+b.h) return true;
+  return false;
+}
+
+// enemy spatial hash, rebuilt every frame
+const ehash=new Map();
+function rebuildHash(){
+  ehash.clear();
+  for(const e of surv.enemies){ const k=Math.floor(e.x/CELL)*4096+Math.floor(e.y/CELL); let a=ehash.get(k); if(!a) ehash.set(k,a=[]); a.push(e); }
+}
+function near(x,y,r,fn){   // fn(enemy, dx, dy) for every live enemy whose body overlaps the circle
+  const c0=Math.floor((x-r-30)/CELL), c1=Math.floor((x+r+30)/CELL), d0=Math.floor((y-r-30)/CELL), d1=Math.floor((y+r+30)/CELL);
+  for(let cx=c0;cx<=c1;cx++) for(let cy=d0;cy<=d1;cy++){
+    const a=ehash.get(cx*4096+cy); if(!a) continue;
+    for(const e of a){ if(e.dead) continue; const dx=e.x-x, dy=e.y-y, rr=r+e.r; if(dx*dx+dy*dy<rr*rr) fn(e,dx,dy); }
+  }
+}
+
+function spawnPoint(){
+  const ang=Math.random()*Math.PI*2, R=Math.hypot(W,H)/2/cam.z+60+Math.random()*140;
+  for(let k=0;k<10;k++){
+    const a=ang+k*0.7, x=car.x+Math.cos(a)*R, y=car.y+Math.sin(a)*R;
+    if(x<20||y<20||x>WORLD_W-20||y>WORLD_H-20||blockedAt(x,y,14)) continue;
+    return [x,y];
+  }
+  return null;
+}
+function spawnEnemy(type,pos){
+  if(surv.enemies.length>=450) return;
+  pos=pos||spawnPoint(); if(!pos) return;
+  const d=ETYPES[type], hp=d.hp*(type==='boss'?1:1+surv.t/300);
+  surv.enemies.push({type,x:pos[0],y:pos[1],r:d.r,hp,max:hp,spd:d.spd*(0.88+Math.random()*0.24),dmg:d.dmg,xp:d.xp,col:d.col,
+    a:0,hitT:0,flash:0,slow:0,stuckA:0,stuckT:0,sd:Math.random()<.5?-1:1,wob:Math.random()*7});
+}
+function horde(n){   // a ring of walkers closing in from every side
+  const R=Math.hypot(W,H)/2/cam.z+80;
+  for(let i=0;i<n;i++){ const a=i/n*Math.PI*2, x=car.x+Math.cos(a)*R, y=car.y+Math.sin(a)*R;
+    if(x>20&&y>20&&x<WORLD_W-20&&y<WORLD_H-20&&!blockedAt(x,y,12)) spawnEnemy('walker',[x,y]); }
+}
+function damage(e,amt){
+  if(e.dead) return;
+  e.hp-=amt; e.flash=0.08;
+  if(e.hp<=0) killEnemy(e);
+}
+function killEnemy(e){
+  const S=surv; e.dead=true; S.kills++;
+  score+=10*chain.mult; if(chain.active) chain.pts+=4*chain.mult;
+  if(e.type==='boss'){ for(let i=0;i<6;i++) S.gems.push({x:e.x+(Math.random()-.5)*60,y:e.y+(Math.random()-.5)*60,v:e.xp/6|0}); S.gems.push({x:e.x,y:e.y,kit:true}); shake=10; sfxCrash(1); }
+  else S.gems.push({x:e.x,y:e.y,v:e.xp});
+  if(e.type!=='boss' && Math.random()<0.012) S.gems.push({x:e.x+8,y:e.y+8,kit:true});
+  S.splats.push({x:e.x,y:e.y,r:e.r*(1.2+Math.random()*0.6),a:Math.random()*7,col:e.type==='boss'?'#2a2a2a':e.type==='brute'?'#3d2a48':'#35502a'});
+  if(S.splats.length>260) S.splats.shift();
+  if(S.sfxT<=0 && AC && !muted){ S.sfxT=0.05; burst(AC.currentTime,0.09,'lowpass',700,180,1,0.3); }
+}
+
+function startSurvival(){
+  startCity(); resetPerf();
+  if(!solidGrid) buildSolidGrid();
+  surv={t:0,hp:100,maxHp:100,xp:0,lvl:1,next:xpNeed(1),pendingLv:0,kills:0,enemies:[],gems:[],fire:[],oil:[],splats:[],zaps:[],
+    up:{},spawnAcc:0,hordeMin:1,boss:false,teslaT:1,oilT:2,fireT:0,flameT:0,hurtT:0,sfxT:0,gemT:0};
+  $('xpbar').hidden=false;
+  $('bn').textContent=''; $('bt').textContent='Survive the night';
+  $('bd').textContent='They come from every side. Drift through them: tyre smoke and ramming kill, and your combo multiplies the damage. Last 10 minutes.';
+  bannerEl.style.display='block'; goT=5;
+}
+function endSurvivalView(){ surv=null; $('xpbar').hidden=true; $('levelup').style.display='none'; }
+
+function survUpdate(dt){
+  const S=surv, t=(S.t+=dt);
+  S.sfxT-=dt; S.gemT-=dt; S.hurtT=Math.max(0,S.hurtT-dt); S.flameT=Math.max(0,S.flameT-dt);
+  if(t>=SURV_LEN){ survEnd(true); return; }
+
+  // waves: a steady trickle that grows, a horde every minute, the police at BOSS_T
+  const cap=Math.min(320,14+t*0.55);
+  S.spawnAcc+=dt*(1.2+t/40);
+  while(S.spawnAcc>=1){ S.spawnAcc--; if(S.enemies.length<cap){ const r=Math.random(); spawnEnemy(t>180&&r<0.1?'brute':t>60&&r<0.35?'runner':'walker'); } }
+  if(t>=S.hordeMin*60 && S.hordeMin<10){ horde(18+S.hordeMin*6); S.hordeMin++; msg('Horde incoming','#ff6a55'); }
+  if(!S.boss && t>=BOSS_T){ S.boss=true; for(let i=0;i<3;i++) spawnEnemy('boss'); msg('The police are here','#ff6a55'); sfxNotes([660,440,660,440],'square',0.14,0.1); }
+
+  rebuildHash();
+  const fx=Math.cos(car.a), fy=Math.sin(car.a);
+  const dmgMult=1+(chain.active?(chain.mult-1)*0.25:0);   // x8 combo = 2.75x damage
+
+  // enemies walk at the car, slide along walls, and sidestep when they get stuck
+  for(const e of S.enemies){
+    e.flash=Math.max(0,e.flash-dt); e.hitT=Math.max(0,e.hitT-dt);
+    const dx=car.x-e.x, dy=car.y-e.y, d=Math.hypot(dx,dy)||1;
+    if(d>1700){ const p=spawnPoint(); if(p){ e.x=p[0]; e.y=p[1]; } continue; }
+    let ux=dx/d, uy=dy/d;
+    if(e.stuckT>0){ e.stuckT-=dt; const s=e.sd; [ux,uy]=[-uy*s,ux*s]; }
+    const v=e.spd*(e.slow>0?0.3:1)*dt, ox=e.x, oy=e.y; e.slow=Math.max(0,e.slow-dt);
+    e.x+=ux*v; e.y+=uy*v; e.a=Math.atan2(dy,dx);
+    near(e.x,e.y,e.r,(o,ex,ey)=>{ if(o===e) return; const dd=Math.hypot(ex,ey)||1, pen=(e.r+o.r-dd)*0.25; e.x-=ex/dd*pen; e.y-=ey/dd*pen; });
+    pushOutSolids(e);
+    if(!(e.stuckT>0) && v>0.3 && Math.hypot(e.x-ox,e.y-oy)<v*0.25){ e.stuckA+=dt; if(e.stuckA>0.25){ e.stuckT=0.9; e.stuckA=0; } } else e.stuckA=0;
+  }
+
+  // the car: ramming damage, knockback, and contact damage when you are slow
+  const bumper=S.up.bumper||0, armour=S.up.armour||0; let hurt=0;
+  for(const off of [13,-13]){
+    near(car.x+fx*off,car.y+fy*off,13,(e,ex,ey)=>{
+      const dd=Math.hypot(ex,ey)||1, nx=ex/dd, ny=ey/dd, closing=car.vx*nx+car.vy*ny;
+      if(closing>90 && e.hitT<=0){
+        e.hitT=0.25; damage(e,closing*0.13*(1+0.4*bumper)*dmgMult);
+        const kb=(e.type==='boss'?0.1:e.type==='brute'?0.4:1)*(1+0.5*bumper);
+        e.x+=nx*18*kb; e.y+=ny*18*kb;
+        const drag=e.type==='boss'?0.55:e.type==='brute'?0.85:0.97; car.vx*=drag; car.vy*=drag;
+        if(e.type==='boss'){ shake=8; sfxCrash(closing/600); }
+      }
+      const pen=13+e.r-dd; if(pen>0){ if(e.type==='boss'){ car.x-=nx*pen; car.y-=ny*pen; } else { e.x+=nx*pen; e.y+=ny*pen; } }
+      if(!e.dead && closing<=90) hurt+=e.dmg;
+    });
+  }
+  if(hurt){ S.hp-=hurt*dt*(1-0.08*armour); S.hurtT=0.2; if(S.hp<=0){ S.hp=0; survEnd(false); return; } }
+
+  // tyre smoke: the core weapon
+  const toxic=S.up.toxic||0, inferno=!!S.up.inferno;
+  const smokeDps=10*(1+0.4*toxic)*(inferno?2:1)*dmgMult;
+  for(const s of smoke){ if(s.life<0.15) continue;
+    near(s.x,s.y,s.r*0.8,e=>damage(e,smokeDps*dt*s.life));
+    if(inferno && Math.random()<dt*1.5) S.fire.push({x:s.x,y:s.y,life:1.2,max:1.2}); }
+
+  // flaming tyres: burning patches along the skid marks
+  const fireL=S.up.fire||0;
+  if(fireL && prevWheels){ S.fireT-=dt; if(S.fireT<=0){ S.fireT=0.07; for(const w of prevWheels) S.fire.push({x:w.x,y:w.y,life:1.2+0.3*fireL,max:1.2+0.3*fireL}); } }
+  if(S.fire.length>450) S.fire.splice(0,S.fire.length-450);
+  const fireDps=(14+8*Math.max(fireL,inferno?3:0))*dmgMult;
+  for(let i=S.fire.length-1;i>=0;i--){ const f=S.fire[i]; f.life-=dt; if(f.life<=0){ S.fire.splice(i,1); continue; } near(f.x,f.y,14,e=>damage(e,fireDps*dt)); }
+
+  // oil slick
+  const oilL=S.up.oil||0;
+  if(oilL){ S.oilT-=dt; if(S.oilT<=0){ S.oilT=Math.max(1.2,3.2-0.4*oilL); S.oil.push({x:car.x-fx*34,y:car.y-fy*34,r:38+8*oilL,life:5+oilL,a:Math.random()*7}); } }
+  for(let i=S.oil.length-1;i>=0;i--){ const o=S.oil[i]; o.life-=dt; if(o.life<=0){ S.oil.splice(i,1); continue; } near(o.x,o.y,o.r,e=>{ e.slow=0.25; damage(e,3*oilL*dt); }); }
+
+  // tesla coil
+  const tl=S.up.tesla||0;
+  if(tl){ S.teslaT-=dt; if(S.teslaT<=0){ S.teslaT=1.7-0.2*tl;
+    const tg=[]; near(car.x,car.y,320,(e,ex,ey)=>tg.push([ex*ex+ey*ey,e])); tg.sort((a,b)=>a[0]-b[0]);
+    for(const [,e] of tg.slice(0,tl)){ S.zaps.push({x1:e.x,y1:e.y,life:0.18,seed:Math.random()*99}); damage(e,(28+12*tl)*dmgMult); }
+    if(tg.length && AC && !muted) burst(AC.currentTime,0.12,'highpass',4000,2000,2,0.18); } }
+  for(let i=S.zaps.length-1;i>=0;i--){ if((S.zaps[i].life-=dt)<=0) S.zaps.splice(i,1); }
+
+  // afterburner
+  const bl=S.up.burner||0;
+  if(bl && throttleIn()>0.4){ const k=40+6*bl; near(car.x-fx*k,car.y-fy*k,22+5*bl,e=>damage(e,(25+15*bl)*dt*dmgMult)); S.flameT=0.1; }
+
+  S.enemies=S.enemies.filter(e=>!e.dead);
+
+  // XP gems and repair kits
+  const mag=70+45*(S.up.magnet||0), sp=Math.hypot(car.vx,car.vy);
+  for(let i=S.gems.length-1;i>=0;i--){
+    const g=S.gems[i], dx=car.x-g.x, dy=car.y-g.y, d=Math.hypot(dx,dy)||1;
+    if(g.pull||d<mag){ g.pull=true; const v=Math.min(d,Math.max(320,sp+220)*dt); g.x+=dx/d*v; g.y+=dy/d*v; }
+    if(d<22){ S.gems.splice(i,1);
+      if(g.kit){ S.hp=Math.min(S.maxHp,S.hp+30); msg('Repaired +30','#7fe08a'); sfxNotes([784,1047],'triangle',0.06,0.1); }
+      else { S.xp+=g.v; if(S.gemT<=0 && AC && !muted){ S.gemT=0.05; sfxNotes([1320+Math.random()*200],'sine',0.03,0.035); } } }
+  }
+  if(S.gems.length>500) S.gems.splice(0,S.gems.length-500);
+  while(S.xp>=S.next){ S.xp-=S.next; S.lvl++; S.next=xpNeed(S.lvl); S.pendingLv++; }
+  if(S.pendingLv>0) openLevelUp();
+}
+
+// level-up cards
+function upOptions(){
+  const S=surv, pool=Object.keys(UPGRADES).filter(k=>k!=='inferno'&&(S.up[k]||0)<MAXL), opts=[];
+  if(S.up.fire>=MAXL && S.up.toxic>=MAXL && !S.up.inferno) opts.push('inferno');
+  while(opts.length<3 && pool.length) opts.push(pool.splice(Math.floor(Math.random()*pool.length),1)[0]);
+  if(!opts.length) opts.push('repair');
+  return opts;
+}
+function openLevelUp(){
+  const S=surv; S.pendingLv--; state='levelup'; silence();
+  for(const k in keys) keys[k]=false; setSteer(0);
+  document.querySelectorAll('.touch button.on').forEach(b=>b.classList.remove('on'));
+  $('upTitle').textContent='Level '+(S.lvl-S.pendingLv);
+  const box=$('upCards'); box.innerHTML='';
+  upOptions().forEach((k,i)=>{
+    const u=k==='repair'?{name:'Full repair',desc:()=>'Restore all health.'}:UPGRADES[k], l=(S.up[k]||0)+1;
+    const b=document.createElement('button'); b.className='upcard'+(k==='inferno'?' evo':''); b.disabled=true;
+    b.innerHTML='<span class="uk"></span><span class="un"></span><span class="ul"></span><span class="ud"></span>';
+    b.querySelector('.uk').textContent=i+1;
+    b.querySelector('.un').textContent=u.name;
+    b.querySelector('.ul').textContent=k==='inferno'?'EVOLUTION':k==='repair'?'':'●'.repeat(l)+'○'.repeat(MAXL-l)+(l===1?'  new':'');
+    b.querySelector('.ud').textContent=u.desc(l);
+    b.addEventListener('click',()=>chooseUp(k)); box.appendChild(b);
+  });
+  $('levelup').style.display='flex';
+  sfxNotes([523,784,1047],'triangle',0.07,0.1);
+  // short lock so a held drift button or a stray tap does not pick a card by accident
+  setTimeout(()=>{ const bs=box.querySelectorAll('button'); bs.forEach(b=>b.disabled=false); if(!isTouch||document.body.classList.contains('pad-nav')) bs[0]?.focus(); },450);
+}
+function chooseUp(k){
+  const S=surv; if(!S||state!=='levelup') return;
+  if(k==='repair') S.hp=S.maxHp;
+  else {
+    const l=S.up[k]=(S.up[k]||0)+1;
+    if(k==='armour'){ S.maxHp+=25; S.hp=Math.min(S.maxHp,S.hp+25); }
+    if(k==='toxic'){ perf.smoke=1+0.2*l; perf.smokeLife=1+0.15*l; }
+    if(k==='tune'){ perf.acc=1+0.08*l; perf.top=1+0.08*l; }
+    if(k==='inferno') msg('Inferno drift!','#ff7a1a');
+  }
+  $('levelup').style.display='none'; state='free';
+  if(S.pendingLv>0) openLevelUp();
+}
+addEventListener('keydown',e=>{
+  if(state!=='levelup') return;
+  const n={Digit1:0,Digit2:1,Digit3:2,Numpad1:0,Numpad2:1,Numpad3:2}[e.code];
+  const b=n!==undefined&&$('upCards').children[n]; if(b&&!b.disabled) b.click();
+});
+
+function survEnd(won){
+  const S=surv; if(chain.active) bank();
+  state='done'; silence(); $('levelup').style.display='none';
+  let rec={t:0,kills:0}; try{ rec=JSON.parse(localStorage.getItem('sc_surv'))||rec; }catch(e){}
+  const lasted=Math.floor(Math.min(S.t,SURV_LEN)), record=lasted>rec.t||S.kills>rec.kills;
+  rec={t:Math.max(rec.t,lasted),kills:Math.max(rec.kills,S.kills)};
+  try{ localStorage.setItem('sc_surv',JSON.stringify(rec)); }catch(e){}
+  $('rTitle').textContent=won?'You survived the night':'Wrecked';
+  $('rTitle').style.color=won?'var(--accent)':'var(--bad)';
+  $('rStars').textContent=won?'★★★':''; $('rStars').setAttribute('aria-label',won?'Survived':'');
+  $('rScore').textContent='Survived '+fmtT(lasted)+', '+S.kills.toLocaleString()+' kills, level '+S.lvl+', score '+score.toLocaleString()+'.';
+  $('rBest').textContent='Your best: '+fmtT(rec.t)+' survived, '+rec.kills.toLocaleString()+' kills.'+(record?' New record!':'');
+  $('rNext').style.display='none'; $('rRetry').onclick=startSurvival; $('rMenu').onclick=showMenu;
+  setTimeout(()=>{ if(state==='done'){ $('result').style.display='flex'; $('rRetry').focus(); } },900);
+  sfxNotes(won?[523,659,784,1047]:[392,330,262],won?'square':'sawtooth',0.12,0.1);
+}
+
+// drawing
+function survDrawGround(hw,hh){
+  const S=surv, vis=(x,y)=>Math.abs(x-cam.x)<hw+60&&Math.abs(y-cam.y)<hh+60, now=performance.now()/1000;
+  for(const s of S.splats){ if(!vis(s.x,s.y)) continue; ctx.fillStyle=s.col; ctx.globalAlpha=0.55;
+    ctx.beginPath(); ctx.ellipse(s.x,s.y,s.r,s.r*0.7,s.a,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(s.x+Math.cos(s.a)*s.r,s.y+Math.sin(s.a)*s.r,s.r*0.3,0,7); ctx.fill(); }
+  ctx.globalAlpha=1;
+  for(const o of S.oil){ if(!vis(o.x,o.y)) continue; const al=Math.min(1,o.life);
+    ctx.fillStyle=`rgba(12,12,16,${0.8*al})`; ctx.beginPath(); ctx.ellipse(o.x,o.y,o.r,o.r*0.8,o.a,0,7); ctx.fill();
+    ctx.strokeStyle=`rgba(140,90,255,${0.25*al})`; ctx.lineWidth=3; ctx.beginPath(); ctx.ellipse(o.x-o.r*0.2,o.y-o.r*0.15,o.r*0.5,o.r*0.3,o.a,0,4); ctx.stroke(); }
+  for(const f of S.fire){ if(!vis(f.x,f.y)) continue; const k=f.life/f.max, fl=0.8+Math.sin(now*30+f.x)*0.2;
+    ctx.fillStyle=`rgba(255,${120+80*k|0},30,${0.55*k})`; ctx.beginPath(); ctx.arc(f.x,f.y,12*fl*(0.6+0.4*k),0,7); ctx.fill();
+    ctx.fillStyle=`rgba(255,230,120,${0.6*k})`; ctx.beginPath(); ctx.arc(f.x,f.y,5*fl,0,7); ctx.fill(); }
+  for(const g of S.gems){ if(!vis(g.x,g.y)) continue;
+    if(g.kit){ ctx.fillStyle='#f1ede4'; ctx.fillRect(g.x-9,g.y-9,18,18); ctx.fillStyle='#e0413a'; ctx.fillRect(g.x-2.5,g.y-6,5,12); ctx.fillRect(g.x-6,g.y-2.5,12,5); continue; }
+    const s=g.v>=20?9:g.v>=5?7:5, c=g.v>=20?'#ff4f6a':g.v>=5?'#5fe07a':'#4fb6ff';
+    ctx.fillStyle=c; ctx.beginPath(); ctx.moveTo(g.x,g.y-s*1.3); ctx.lineTo(g.x+s,g.y); ctx.lineTo(g.x,g.y+s*1.3); ctx.lineTo(g.x-s,g.y); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,.6)'; ctx.fillRect(g.x-1.5,g.y-s*0.7,3,s*0.6); }
+  // enemies stand on the ground, so they go under the car
+  for(const e of S.enemies){ if(!vis(e.x,e.y)) continue;
+    if(e.type==='boss'){ drawCop(e,now); continue; }
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(e.a);
+    const r=e.r, sway=Math.sin(now*8+e.wob)*r*0.15, body=e.flash>0?'#ffffff':e.col;
+    ctx.fillStyle='rgba(0,0,0,.28)'; ctx.beginPath(); ctx.arc(3,4,r,0,7); ctx.fill();
+    ctx.fillStyle=shade(e.col,0.75); ctx.fillRect(0,-r*0.95+sway,r*1.25,r*0.36); ctx.fillRect(0,r*0.6-sway,r*1.25,r*0.36);   // arms reaching out
+    ctx.fillStyle=body; ctx.beginPath(); ctx.arc(0,0,r,0,7); ctx.fill();
+    ctx.fillStyle=e.flash>0?'#fff':shade(e.col,1.18); ctx.beginPath(); ctx.arc(r*0.15,0,r*0.55,0,7); ctx.fill();
+    ctx.fillStyle='#e8323a'; ctx.fillRect(r*0.45,-r*0.28,r*0.16,r*0.16); ctx.fillRect(r*0.45,r*0.12,r*0.16,r*0.16);   // glowing eyes
+    ctx.restore();
+    if(e.type==='brute' && e.hp<e.max) hpBar(e.x,e.y-e.r-8,30,e.hp/e.max,'#c44cff');
+  }
+}
+function drawCop(e,now){
+  const own=paint; paint=policePaint; drawCar(e.x,e.y,e.a,0,false); paint=own;
+  ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(e.a);
+  const on=Math.floor(now*6)%2;
+  ctx.fillStyle=on?'#ff2d2d':'#2d6bff'; ctx.fillRect(-4,-7,5,6); ctx.fillStyle=on?'#2d6bff':'#ff2d2d'; ctx.fillRect(-4,1,5,6);
+  ctx.fillStyle=on?'rgba(255,45,45,.25)':'rgba(45,107,255,.25)'; ctx.beginPath(); ctx.arc(0,0,40,0,7); ctx.fill();
+  if(e.flash>0){ ctx.fillStyle='rgba(255,255,255,.5)'; ctx.fillRect(-24,-12,48,24); }
+  ctx.restore();
+  hpBar(e.x,e.y-34,56,e.hp/e.max,'#ff4f4f');
+}
+function hpBar(x,y,w,k,col){ ctx.fillStyle='rgba(0,0,0,.6)'; ctx.fillRect(x-w/2-1,y-1,w+2,6); ctx.fillStyle=col; ctx.fillRect(x-w/2,y,w*Math.max(0,k),4); }
+function survDrawFx(){
+  const S=surv, fx=Math.cos(car.a), fy=Math.sin(car.a);
+  if(S.flameT>0){ const bl=S.up.burner||1, L=40+6*bl, now=performance.now()/100;
+    for(let i=0;i<3;i++){ const k=L*(0.5+i*0.35)+Math.sin(now+i)*4, w=6+i*4+bl;
+      ctx.fillStyle=['rgba(255,240,150,.8)','rgba(255,150,40,.6)','rgba(255,70,20,.35)'][i];
+      ctx.beginPath(); ctx.arc(car.x-fx*k,car.y-fy*k,w,0,7); ctx.fill(); } }
+  ctx.lineCap='round';
+  for(const z of S.zaps){ ctx.strokeStyle=`rgba(150,230,255,${z.life/0.18})`; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(car.x,car.y);
+    for(let i=1;i<=6;i++){ const u=i/6, j=i<6?Math.sin(z.seed+i*12.9)*14:0; ctx.lineTo(car.x+(z.x1-car.x)*u-fy*j,car.y+(z.y1-car.y)*u+fx*j); }
+    ctx.stroke(); }
+  hpBar(car.x,car.y+30,52,S.hp/S.maxHp,S.hp/S.maxHp<0.3?'#ff5a4a':'#5fe07a');
+}
+function survOverlay(){   // night: dark except around the headlights, red flash when hurt
+  const S=surv; ctx.setTransform(DPR,0,0,DPR,0,0);
+  const fx=car.x+Math.cos(car.a)*60, fy=car.y+Math.sin(car.a)*60;
+  const sx=W/2+(fx-cam.x)*cam.z, sy=H/2+(fy-cam.y)*cam.z;
+  const gr=ctx.createRadialGradient(sx,sy,110*cam.z,sx,sy,620*cam.z);
+  gr.addColorStop(0,'rgba(8,6,30,0)'); gr.addColorStop(1,'rgba(8,6,30,0.66)');
+  ctx.fillStyle=gr; ctx.fillRect(0,0,W,H);
+  if(S.hurtT>0){   // red glow at the screen edges only, so the view stays readable
+    const v=ctx.createRadialGradient(W/2,H/2,Math.min(W,H)*0.3,W/2,H/2,Math.hypot(W,H)/2);
+    v.addColorStop(0,'rgba(255,30,30,0)'); v.addColorStop(1,`rgba(255,30,30,${Math.min(0.55,S.hurtT*2.5)})`);
+    ctx.fillStyle=v; ctx.fillRect(0,0,W,H); }
 }
 
 // ---------- loop ----------
@@ -914,6 +1269,7 @@ function frame(t){
   let speed=Math.hypot(car.vx,car.vy);
   if(state==='race'||state==='free'){
     speed=update(dt); updateAudio(dt);
+    if(surv) survUpdate(dt);
     if(state==='race'){ run.t+=dt; recordGhost(); if(run.t>=T.limit) finish(false); }
   } else if(state==='count'){
     countT-=dt; aIn.speed=0; aIn.slip=0; aIn.throttle=throttleIn(); updateAudio(dt);
@@ -936,6 +1292,11 @@ function frame(t){
     sub2El.textContent='Lap '+Math.min(run.lap+1,run.def.laps)+'/'+run.def.laps+'\u2003'+fmtT(left);
     sub2El.classList.toggle('warn',left<10);
     wrongEl.style.display=run.wrongT>0.7&&state==='race'?'block':'none';
+  } else if(surv){
+    sub1El.textContent='Dawn in '+fmtT(SURV_LEN-surv.t);
+    sub2El.textContent='Level '+surv.lvl+'\u2003'+surv.kills.toLocaleString()+' kills';
+    sub2El.classList.remove('warn'); wrongEl.style.display='none';
+    $('xpfill').style.width=(100*surv.xp/surv.next).toFixed(1)+'%';
   } else { sub1El.textContent='Best drift '+best.toLocaleString(); sub2El.textContent=''; wrongEl.style.display='none'; }
   if(chain.active){ comboEl.style.opacity=1; cptsEl.textContent=Math.round(chain.pts).toLocaleString(); cmultEl.textContent='x'+chain.mult; }
   else comboEl.style.opacity=0;
@@ -951,6 +1312,7 @@ const starStr=n=>'\u2605'.repeat(n)+'\u2606'.repeat(3-n);
 function clearFx(){ skids.length=0; smoke.length=0; chain.active=false; chain.pts=0; chain.mult=1; chain.time=0; prevWheels=null; score=0; toastEl.style.opacity=0; zmsgEl.style.opacity=0; }
 function hideOverlays(){ $('start').style.display='none'; $('result').style.display='none'; }
 function startStage(i){
+  endSurvivalView(); resetPerf();
   hideOverlays(); loadStage(i); clearFx();
   const def=STAGES[i];
   run={i,def,lap:0,t:0,pi:3,flags:0,zi:-1,zs:[],clipHit:new Set(),wrongT:0,rec:[],ghost:loadGhost(i)}; newLapZones();
@@ -962,11 +1324,13 @@ function startStage(i){
   initAudio();
 }
 function startCity(){
+  endSurvivalView(); resetPerf();
   hideOverlays(); mode='city'; T=null; run=null; clearFx(); buildMini();
   resetCar(); cam.x=car.x; cam.y=car.y; state='free'; bannerEl.style.display='none'; initAudio();
 }
 function showMenu(){
   if(state==='pause'&&!isTouch) setPauseLayout(false);
+  endSurvivalView();
   state='menu'; pausedFrom=null; silence(); bannerEl.style.display='none'; $('result').style.display='none'; $('settings').style.display='none';
   renderStageGrid(); $('start').style.display='flex';
 }
@@ -1025,6 +1389,7 @@ if(isTouch){
   $('menuBtn').textContent='Quit to stages'; $('resetBtn').textContent='Reset car';
 }
 $('free').addEventListener('click',startCity);
+$('survive').addEventListener('click',startSurvival);
 if(window.desktop){ $('quit').hidden=false; $('quit').addEventListener('click',()=>window.desktop.quit()); }
 $('resetBtn').addEventListener('click',e=>{ e.currentTarget.blur(); resume(); if(state==='race'||state==='free'){ wreck(); resetCar(); } });
 

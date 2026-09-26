@@ -11,6 +11,7 @@
   </head>
   <body>
     <canvas id="c"></canvas>
+    <div id="xpbar" hidden><i id="xpfill"></i></div>
 
     <div class="hud">
       <div>
@@ -80,6 +81,14 @@
       </div>
     </div>
 
+    <div id="levelup" class="overlay" role="dialog" aria-modal="true" aria-labelledby="upTitle">
+      <div class="card">
+        <h2 id="upTitle">Level up</h2>
+        <p>Pick an upgrade.</p>
+        <div class="upcards" id="upCards"></div>
+      </div>
+    </div>
+
     <div class="touch l">
       <div
         class="steer"
@@ -127,6 +136,7 @@
         </div>
         <h2>Stages</h2>
         <div class="stages" id="stages"></div>
+        <button class="btn" id="survive">Survive the night</button>
         <button class="btn ghost" id="free">Free drive in the city</button>
         <button class="btn ghost" id="quit" hidden>Quit game</button>
         <dl class="keys-only">

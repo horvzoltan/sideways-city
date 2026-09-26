@@ -12,6 +12,12 @@ The game loads its engine sound from `assets/`, so open it through a local web s
 
 `sideways-city-single-file.html` is the all-in-one version with everything embedded. It works by double-clicking, but it's harder to edit.
 
+## Survive the night
+
+A survival mode in the Miami city, in the spirit of Vampire Survivors. Hordes chase the car for 10 minutes; the police arrive at 7:30. Ramming and tyre smoke kill, and the drift combo multiplies all damage. Kills drop XP gems, and each level-up offers 3 upgrade cards (keys 1–3, tap, or controller). Maxing Flaming tyres and Toxic smoke unlocks the Inferno drift evolution. Best time and kills are saved in the browser.
+
+Tuning lives in the survival section of `js/game.js`: `ETYPES` (enemy stats), `UPGRADES` (cards), `survUpdate()` (spawn rates, hordes, weapon damage) and `xpNeed()` (level curve).
+
 ## Controller
 
 Any standard gamepad (Xbox, PlayStation, Steam Deck) works in the browser and the desktop app: left stick or D-pad steers, RT gas and LT brake (both analog: a light pull gives a little throttle or braking, like pedals), A or RB handbrake, Y resets the car, Start pauses. In menus the stick or D-pad moves the selection, A picks, B goes back. The code is the gamepad section of `js/game.js`.

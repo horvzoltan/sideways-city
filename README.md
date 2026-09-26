@@ -14,7 +14,7 @@ The game loads its engine sound from `assets/`, so open it through a local web s
 
 ## Survive the night
 
-A survival mode in the spirit of Vampire Survivors, played in an endless city: blocks are generated from their grid position as you drive (`genBlock()` in `js/game.js`), so there are no map edges or dead ends, and the minimap becomes a radar around the car. Hordes chase the car for 10 minutes; the police arrive at 7:30. Ramming and tyre smoke kill, and the drift combo multiplies all damage. Kills drop XP gems, and each level-up offers 3 upgrade cards (keys 1–3, tap, or controller). Maxing Flaming tyres and Toxic smoke unlocks the Inferno drift evolution. Best time and kills are saved in the browser.
+A survival mode in the spirit of Vampire Survivors, played in an endless city generated as you drive (`js/city.js`): curving avenues between jittered intersections, roundabouts, side streets (through streets, crescents, cul-de-sacs), parks, parking lots and buildings that face the street. Each cell is derived from a hash of its coordinates, so the city is the same every run, and the minimap becomes a radar around the car. Hordes chase the car for 10 minutes; the police arrive at 7:30. Ramming and tyre smoke kill, and the drift combo multiplies all damage. Kills drop XP gems, and each level-up offers 3 upgrade cards (keys 1–3, tap, or controller). Maxing Flaming tyres and Toxic smoke unlocks the Inferno drift evolution. Best time and kills are saved in the browser.
 
 Tuning lives in the survival section of `js/game.js`: `ETYPES` (enemy stats), `UPGRADES` (cards), `survUpdate()` (spawn rates, hordes, weapon damage) and `xpNeed()` (level curve).
 
@@ -41,6 +41,7 @@ AppImages need FUSE 2 (`libfuse2`). Without it, run the unpacked build in `dist/
 index.html                  page structure: HUD, menus, touch controls
 css/style.css               all styling
 js/tracks.js                the six stage layouts and track geometry
+js/city.js                  endless city generator for the survival mode
 js/game.js                  everything else (physics, drawing, sound, scoring, menus)
 assets/supra-engine.mp3     engine recording used for the car sound
 assets/fonts/               Chakra Petch, bundled so the game works offline

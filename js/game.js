@@ -87,50 +87,13 @@ for(let y=0;y<MH;y++){ let x=0;
     let e=x; while(e<MW&&map[y*MW+e]===WATER) e++;
     solids.push({x:x*TILE,y:y*TILE,w:(e-x)*TILE,h:TILE}); x=e; }
 }
-// ---------- endless city (survival): generated one block at a time from its grid position ----------
-// The same block always comes out the same, blocks far from the car are dropped, and the layout is
-// more open than Miami so there is room to drift away from a horde.
+// ---------- endless city (survival): organic street network from js/city.js ----------
 let world='miami';   // 'miami' (fixed map above) or 'endless'
 const endless=()=>world==='endless';
 const mod=(a,n)=>((a%n)+n)%n;
-const blocks=new Map();
-function hrand(bi,bj){   // small deterministic RNG seeded by block coordinates
-  let h=(Math.imul(bi,374761393)+Math.imul(bj,668265263))^0x5bf03635;
-  return ()=>{ h=Math.imul(h^(h>>>15),2246822519); h=Math.imul(h^(h>>>13),3266489917); h^=h>>>16; return (h>>>0)/4294967296; };
-}
-function genBlock(bi,bj){
-  const R=hrand(bi,bj), S=BLOCK-ROADW, x0=bi*BLOCK+ROADW, y0=bj*BLOCK+ROADW;
-  const B={t:new Uint8Array(S*S).fill(WALK),solids:[],scenery:[]};
-  const add=(tx,ty,tw,th,tall)=>{ const b=makeBuilding(x0+tx,y0+ty,tw,th,tall,R); B.solids.push(b); B.scenery.push(b); };
-  const palm=(tx,ty)=>B.scenery.push(makePalm((x0+tx)*TILE,(y0+ty)*TILE,R));
-  const r=R(), tall=R()<0.3;
-  if(bi===0&&bj===0){ for(let k=0;k<6;k++) palm(1+R()*4,1+R()*4); return B; }   // open plaza at the start
-  if(r<0.22){ for(let y=1;y<S-1;y++)for(let x=1;x<S-1;x++) B.t[y*S+x]=GRASS; for(let k=0;k<6;k++) palm(1.4+R()*3.2,1.4+R()*3.2); }
-  else if(r<0.40){ B.t.fill(LOT); }
-  else if(r<0.48){ for(let k=0;k<5;k++) palm(0.6+R()*4.8,0.6+R()*4.8); }   // open plaza
-  else {
-    const q=R();
-    if(q<0.3) add(1,1,4,4,tall);
-    else if(q<0.55){ add(1,1,2,4,tall); add(3.5,1,1.5,4,false); }
-    else if(q<0.8){ add(1,1,4,2,tall); add(1,3.5,4,1.5,false); }
-    else add(2,2,2,2,tall);   // small tower in the middle: easy to drift around
-    for(let k=0;k<S;k+=2){ if(R()<0.4) palm(k+0.5,0.5); if(R()<0.4) palm(k+0.5,S-0.5); }
-  }
-  return B;
-}
-function getBlock(bi,bj){ const k=bi+','+bj; let b=blocks.get(k); if(!b){ b=genBlock(bi,bj); blocks.set(k,b); } return b; }
-function evictBlocks(){   // keep memory flat however far the car goes
-  if(blocks.size<400) return;
-  const cb=Math.floor(car.x/(BLOCK*TILE)), cj=Math.floor(car.y/(BLOCK*TILE));
-  for(const k of blocks.keys()){ const [i,j]=k.split(',').map(Number); if(Math.abs(i-cb)>8||Math.abs(j-cj)>8) blocks.delete(k); }
-}
-function endlessTile(tx,ty){
-  const bx=mod(tx,BLOCK), by=mod(ty,BLOCK);
-  if(bx<ROADW||by<ROADW) return ROAD;
-  return getBlock(Math.floor(tx/BLOCK),Math.floor(ty/BLOCK)).t[(by-ROADW)*(BLOCK-ROADW)+bx-ROADW];
-}
+const city=createEndlessCity({ROAD,WALK,GRASS,LOT,DECO,TOWERS,ACCENT,makePalm});
 function tileAt(px,py){ const x=Math.floor(px/TILE), y=Math.floor(py/TILE);
-  if(endless()) return endlessTile(x,y);
+  if(endless()) return city.surfaceAt(px,py);
   if(x<0||y<0||x>=MW||y>=MH) return ROAD; return map[y*MW+x]; }
 // Miami walls by tile, so collision only tests what is nearby
 const solidGrid=Array.from({length:MW*MH},()=>[]);
@@ -139,12 +102,20 @@ for(const b of solids){
   const ty0=Math.max(0,Math.floor(b.y/TILE)), ty1=Math.min(MH-1,Math.floor((b.y+b.h)/TILE));
   for(let y=ty0;y<=ty1;y++) for(let x=tx0;x<=tx1;x++) solidGrid[y*MW+x].push(b);
 }
-function forSolidsNear(x,y,r,fn){   // fn(rect) for every wall that could touch the circle (may repeat)
-  if(endless()){
-    const s=BLOCK*TILE, i0=Math.floor((x-r)/s), i1=Math.floor((x+r)/s), j0=Math.floor((y-r)/s), j1=Math.floor((y+r)/s);
-    for(let j=j0;j<=j1;j++) for(let i=i0;i<=i1;i++) for(const b of getBlock(i,j).solids) if(fn(b)) return;
-    return;
-  }
+function circleHit(b,cx,cy,r){   // {nx,ny,pen} pushing the circle out of the wall, or null
+  let lx=cx, ly=cy, hw, hh, c=1, s=0, ox, oy;
+  if(b.ang!==undefined){ c=Math.cos(b.ang); s=Math.sin(b.ang); const dx=cx-b.cx, dy=cy-b.cy; lx=dx*c+dy*s; ly=-dx*s+dy*c; hw=b.hw; hh=b.hh; ox=0; oy=0; }
+  else { hw=b.w/2; hh=b.h/2; ox=b.x+hw; oy=b.y+hh; lx=cx-ox; ly=cy-oy; }
+  const px=Math.max(-hw,Math.min(hw,lx)), py=Math.max(-hh,Math.min(hh,ly));
+  let ex=lx-px, ey=ly-py; const d=Math.hypot(ex,ey); let pen;
+  if(d>=r) return null;
+  if(d>0.001){ ex/=d; ey/=d; pen=r-d; }
+  else { const qx=hw-Math.abs(lx), qy=hh-Math.abs(ly);   // centre inside: leave by the nearest face
+    if(qx<qy){ ex=Math.sign(lx)||1; ey=0; pen=qx+r; } else { ex=0; ey=Math.sign(ly)||-1; pen=qy+r; } }
+  return {nx:ex*c-ey*s, ny:ex*s+ey*c, pen};
+}
+function forSolidsNear(x,y,r,fn){   // fn(wall) for every wall that could touch the circle (may repeat); return true to stop
+  if(endless()){ city.forSolidsNear(x,y,r,fn); return; }
   const x0=Math.max(0,Math.floor((x-r)/TILE)), x1=Math.min(MW-1,Math.floor((x+r)/TILE));
   const y0=Math.max(0,Math.floor((y-r)/TILE)), y1=Math.min(MH-1,Math.floor((y+r)/TILE));
   for(let ty=y0;ty<=y1;ty++) for(let tx=x0;tx<=x1;tx++) for(const b of solidGrid[ty*MW+tx]) if(fn(b)) return;
@@ -209,7 +180,7 @@ const START={x:3*BLOCK*TILE+TILE, y:3*BLOCK*TILE+TILE*5, a:-Math.PI/2};
 const car={x:0,y:0,a:0,vx:0,vy:0,w:0};
 function resetCar(){
   if(mode==='track'){ const i=run?run.pi:3, p=T.pts[i], t=T.tan[i]; Object.assign(car,{x:p[0],y:p[1],a:Math.atan2(t[1],t[0]),vx:0,vy:0,w:0}); }
-  else if(endless()){ const s=BLOCK*TILE; Object.assign(car,{x:Math.round((car.x-TILE)/s)*s+TILE,y:car.y,a:-Math.PI/2,vx:0,vy:0,w:0}); }
+  else if(endless()) Object.assign(car,city.nearestRoad(car.x,car.y),{vx:0,vy:0,w:0});
   else Object.assign(car,{x:START.x,y:START.y,a:START.a,vx:0,vy:0,w:0});
   prevWheels=null;
 }
@@ -558,16 +529,7 @@ function trackTick(dt,drifting,surf){
 function collideCircle(cx,cy,r){
   if(mode==='track') return collideTrack(cx,cy,r);
   let hit=null;
-  forSolidsNear(cx,cy,r,b=>{
-    if(cx+r<b.x||cx-r>b.x+b.w||cy+r<b.y||cy-r>b.y+b.h) return false;
-    const px=Math.max(b.x,Math.min(cx,b.x+b.w)), py=Math.max(b.y,Math.min(cy,b.y+b.h));
-    let dx=cx-px, dy=cy-py, d=Math.hypot(dx,dy);
-    if(d<r){
-      if(d<0.001){ dx=0; dy=-1; d=1; }
-      hit={nx:dx/d,ny:dy/d,pen:r-d}; return true;
-    }
-    return false;
-  });
+  forSolidsNear(cx,cy,r,b=>(hit=circleHit(b,cx,cy,r)));
   if(!hit && !endless()){
     if(cx<r) hit={nx:1,ny:0,pen:r-cx};
     else if(cx>WORLD_W-r) hit={nx:-1,ny:0,pen:cx-(WORLD_W-r)};
@@ -821,12 +783,10 @@ function drawUmb(u){
   }
   ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(ox,oy,2.5,0,7); ctx.fill();
 }
-function renderCity(hw,hh){
-  const inf=endless(), lo=v=>inf?v:Math.max(0,v), hiX=v=>inf?v:Math.min(MW-1,v), hiY=v=>inf?v:Math.min(MH-1,v);
-  const x0=lo(Math.floor((cam.x-hw)/TILE)), x1=hiX(Math.floor((cam.x+hw)/TILE));
-  const y0=lo(Math.floor((cam.y-hh)/TILE)), y1=hiY(Math.floor((cam.y+hh)/TILE));
-  const now=performance.now()/1000, tile=inf?endlessTile:(x,y)=>map[y*MW+x];
-
+function drawMiamiGround(hw,hh){
+  const x0=Math.max(0,Math.floor((cam.x-hw)/TILE)), x1=Math.min(MW-1,Math.floor((cam.x+hw)/TILE));
+  const y0=Math.max(0,Math.floor((cam.y-hh)/TILE)), y1=Math.min(MH-1,Math.floor((cam.y+hh)/TILE));
+  const now=performance.now()/1000, tile=(x,y)=>map[y*MW+x];
   for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
     const t=tile(x,y);
     ctx.fillStyle=t===WATER && x>=SEA_X ? (x===SEA_X?'#3fbfd2':'#2aa3c8') : COLORS[t];
@@ -837,15 +797,15 @@ function renderCity(hw,hh){
       const o=Math.sin(now*0.8+x+y*1.7)*8;
       ctx.strokeStyle='rgba(255,255,255,.16)'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(x*TILE+32+o,y*TILE+40,12,Math.PI*1.15,Math.PI*1.85); ctx.stroke();
     }
-    else if(t===ROAD && x<BAY_X && !inf){   // causeway railings
+    else if(t===ROAD && x<BAY_X){   // causeway railings
       ctx.fillStyle='#efe9dc';
       if(y%BLOCK===0) ctx.fillRect(x*TILE,y*TILE,TILE+1,5);
       if(y%BLOCK===ROADW-1) ctx.fillRect(x*TILE,y*TILE+TILE-5,TILE+1,5);
     }
   }
   // seawall along the bay, surf along the beach
-  if(!inf) ctx.fillStyle='#efe9dc', ctx.fillRect(BAY_X*TILE-4,y0*TILE,5,(y1-y0+1)*TILE);
-  if(!inf && x1>=SEA_X-1){
+  ctx.fillStyle='#efe9dc'; ctx.fillRect(BAY_X*TILE-4,y0*TILE,5,(y1-y0+1)*TILE);
+  if(x1>=SEA_X-1){
     for(const [dx,al,ph] of [[4,.75,0],[26,.35,2.1]]){
       ctx.strokeStyle=`rgba(255,255,255,${al})`; ctx.lineWidth=5; ctx.lineCap='round'; ctx.beginPath();
       for(let yy=y0*TILE;yy<=(y1+1)*TILE;yy+=12){
@@ -860,9 +820,56 @@ function renderCity(hw,hh){
   for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
     const bx=mod(x,BLOCK), by=mod(y,BLOCK), t=tile(x,y);
     if(t===ROAD && bx===0 && by>=ROADW){ for(let k=0;k<2;k++) ctx.fillRect(x*TILE+TILE-2, y*TILE+k*32+6, 4, 18); }
-    if(t===ROAD && by===0 && (bx>=ROADW || (x<BAY_X && !inf))){ for(let k=0;k<2;k++) ctx.fillRect(x*TILE+k*32+6, y*TILE+TILE-2, 18, 4); }
+    if(t===ROAD && by===0 && (bx>=ROADW || x<BAY_X)){ for(let k=0;k<2;k++) ctx.fillRect(x*TILE+k*32+6, y*TILE+TILE-2, 18, 4); }
     if(t===LOT && mod(x-ROADW,BLOCK)%2===0){ ctx.fillStyle='rgba(240,236,220,.55)'; ctx.fillRect(x*TILE,y*TILE+8,3,48); ctx.fillStyle='#e8c85a'; }
   }
+}
+function drawEndlessGround(hw,hh){
+  const cells=city.cellsIn(cam.x-hw,cam.y-hh,cam.x+hw,cam.y+hh);
+  ctx.fillStyle='#d6ccba'; ctx.fillRect(cam.x-hw,cam.y-hh,hw*2,hh*2);   // paving between streets
+  ctx.fillStyle=COLORS[GRASS]; for(const C of cells) for(const p of C.parks) ctx.fill(p.path);
+  for(const C of cells) for(const l of C.lots){
+    ctx.fillStyle=COLORS[LOT]; ctx.fill(l.path);
+    ctx.save(); ctx.translate(l.cx,l.cy); ctx.rotate(l.ang); ctx.fillStyle='rgba(240,236,220,.55)';
+    for(let x=-l.fw/2+14;x<l.fw/2-8;x+=28){ ctx.fillRect(x,-l.dp/2+6,2.5,l.dp*0.36); ctx.fillRect(x,l.dp/2-6-l.dp*0.36,2.5,l.dp*0.36); }
+    ctx.restore();
+  }
+  // all kerbs first, then all asphalt, so junctions merge into clean rounded corners
+  ctx.lineJoin='round'; ctx.lineCap='round';
+  ctx.strokeStyle='#ebe3d2'; for(const C of cells) for(const r of C.roads){ ctx.lineWidth=r.w+14; ctx.stroke(r.path); }
+  ctx.strokeStyle=COLORS[ROAD]; for(const C of cells) for(const r of C.roads){ ctx.lineWidth=r.w; ctx.stroke(r.path); }
+  ctx.setLineDash([34,30]); ctx.lineWidth=4; ctx.strokeStyle='#e8c85a';
+  for(const C of cells) for(const r of C.roads) if(r.main) ctx.stroke(r.path);
+  ctx.setLineDash([]);
+  for(const C of cells) for(const s of C.islands){
+    ctx.fillStyle=COLORS[GRASS]; ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,7); ctx.fill();
+    ctx.strokeStyle='#ebe3d2'; ctx.lineWidth=6; ctx.stroke();
+  }
+}
+function drawBuildingPoly(b){
+  const k=b.ht, c=b.pts, r=c.map(p=>[p[0]+(p[0]-cam.x)*k, p[1]+(p[1]-cam.y)*k]);
+  for(let i=0;i<4;i++){   // walls, shaded by which way they face
+    const j=(i+1)%4, ex=c[j][0]-c[i][0], ey=c[j][1]-c[i][1], L=Math.hypot(ex,ey)||1, nx=ey/L, ny=-ex/L;
+    ctx.fillStyle=shade(b.col,0.67-0.04*nx-(ny<0?-0.12*ny:0.03*ny));
+    ctx.beginPath(); ctx.moveTo(c[i][0],c[i][1]); ctx.lineTo(c[j][0],c[j][1]); ctx.lineTo(r[j][0],r[j][1]); ctx.lineTo(r[i][0],r[i][1]); ctx.closePath(); ctx.fill();
+  }
+  ctx.fillStyle=b.col; poly(r); ctx.fill();
+  const Q=(u,v)=>{ const ax=r[0][0]+(r[1][0]-r[0][0])*u, ay=r[0][1]+(r[1][1]-r[0][1])*u, bx=r[3][0]+(r[2][0]-r[3][0])*u, by=r[3][1]+(r[2][1]-r[3][1])*u; return [ax+(bx-ax)*v, ay+(by-ay)*v]; };
+  const iu=Math.min(0.12,7/(b.hw*2)), iv=Math.min(0.12,7/(b.hh*2));
+  ctx.strokeStyle=b.acc||shade(b.col,0.8); ctx.lineWidth=b.acc?4:3; poly([Q(iu,iv),Q(1-iu,iv),Q(1-iu,1-iv),Q(iu,1-iv)]); ctx.stroke();
+  if(b.pool){
+    const u0=0.18+b.s*0.14, u1=u0+0.46, v0=0.2+((b.s*5)%1)*0.3, v1=v0+0.34;
+    ctx.fillStyle='#f5efe2'; poly([Q(u0-0.05,v0-0.06),Q(u1+0.05,v0-0.06),Q(u1+0.05,v1+0.06),Q(u0-0.05,v1+0.06)]); ctx.fill();
+    ctx.fillStyle='#4fd0e3'; poly([Q(u0,v0),Q(u1,v0),Q(u1,v1),Q(u0,v1)]); ctx.fill();
+  }
+  ctx.fillStyle=shade(b.col,0.7);
+  for(let v=0;v<b.vents;v++){ const u=0.2+((b.s*7+v*0.31)%0.6), w=0.2+((b.s*3+v*0.43)%0.6); poly([Q(u,w),Q(u+0.1,w),Q(u+0.1,w+0.1),Q(u,w+0.1)]); ctx.fill(); }
+}
+function renderCity(hw,hh){
+  const inf=endless();
+  if(inf) drawEndlessGround(hw,hh);
+  else drawMiamiGround(hw,hh);
+
   // skids
   ctx.strokeStyle='rgba(18,18,20,.38)'; ctx.lineWidth=4; ctx.lineCap='round'; ctx.beginPath();
   for(const s of skids){ ctx.moveTo(s[0],s[1]); ctx.lineTo(s[2],s[3]); }
@@ -875,12 +882,10 @@ function renderCity(hw,hh){
 
   // buildings, palms and umbrellas with fake perspective: tops pushed away from the camera, far ones first
   let scen=scenery;
-  if(inf){ scen=[]; const s=BLOCK*TILE;
-    for(let j=Math.floor((cam.y-hh-300)/s);j<=Math.floor((cam.y+hh+300)/s);j++)
-      for(let i=Math.floor((cam.x-hw-300)/s);i<=Math.floor((cam.x+hw+300)/s);i++) for(const d of getBlock(i,j).scenery) scen.push(d); }
+  if(inf){ scen=[]; for(const C of city.cellsIn(cam.x-hw,cam.y-hh,cam.x+hw,cam.y+hh)) for(const d of C.scenery) scen.push(d); }
   const vis=scen.filter(d=>Math.abs(d.cx-cam.x)<hw+300 && Math.abs(d.cy-cam.y)<hh+300);
   vis.sort((a,b)=>Math.hypot(b.cx-cam.x,b.cy-cam.y)-Math.hypot(a.cx-cam.x,a.cy-cam.y));
-  for(const d of vis){ if(d.t==='palm') drawPalm(d); else if(d.t==='umb') drawUmb(d); else drawBlock(d); }
+  for(const d of vis){ if(d.t==='palm') drawPalm(d); else if(d.t==='umb') drawUmb(d); else if(d.pts) drawBuildingPoly(d); else drawBlock(d); }
 }
 function acrossBar(q,col,thick){
   const p=T.pts[q], t=T.tan[q], nx=-t[1], ny=t[0];
@@ -962,23 +967,23 @@ function buildMini(){
   const p=T.pts[0], t=T.tan[0]; c.lineWidth=5/s; c.strokeStyle='#fff'; c.beginPath();
   c.moveTo(p[0]+t[1]*T.w*1.2,p[1]-t[0]*T.w*1.2); c.lineTo(p[0]-t[1]*T.w*1.2,p[1]+t[0]*T.w*1.2); c.stroke();
 }
-// endless city radar: a pre-drawn patch of blocks around the car, redrawn when the car changes block
-const radarBg=document.createElement('canvas'), RADAR_S=0.055, RADAR_N=6; let radarKey='', radarO=[0,0];
+// endless city radar: a pre-drawn patch of streets around the car, redrawn when the car changes cell
+const radarBg=document.createElement('canvas'), RADAR_S=0.05, RADAR_N=3; let radarKey='', radarO=[0,0];
 function buildRadar(ci,cj){
-  const bs=BLOCK*TILE, px=bs*RADAR_S, n=RADAR_N*2+1; radarBg.width=radarBg.height=Math.ceil(n*px);
-  const c=radarBg.getContext('2d'), MC={[WALK]:'#b3aa9a',[GRASS]:'#5c9a45',[LOT]:'#55585e'}, ts=TILE*RADAR_S, S=BLOCK-ROADW;
-  c.fillStyle='#55585e'; c.fillRect(0,0,radarBg.width,radarBg.height);
-  radarO=[(ci-RADAR_N)*bs,(cj-RADAR_N)*bs];
-  for(let j=0;j<n;j++) for(let i=0;i<n;i++){
-    const B=getBlock(ci-RADAR_N+i,cj-RADAR_N+j), ox=i*px+ROADW*ts, oy=j*px+ROADW*ts;
-    for(let y=0;y<S;y++) for(let x=0;x<S;x++){ c.fillStyle=MC[B.t[y*S+x]]; c.fillRect(ox+x*ts,oy+y*ts,ts+.5,ts+.5); }
-    for(const b of B.solids){ c.fillStyle=shade(b.col,0.75); c.fillRect((b.x-radarO[0])*RADAR_S,(b.y-radarO[1])*RADAR_S,b.w*RADAR_S,b.h*RADAR_S); }
-  }
+  const CH=city.CH, n=RADAR_N*2+1; radarBg.width=radarBg.height=Math.ceil(n*CH*RADAR_S);
+  const c=radarBg.getContext('2d'); radarO=[(ci-RADAR_N)*CH,(cj-RADAR_N)*CH];
+  c.setTransform(1,0,0,1,0,0); c.fillStyle='#b3aa9a'; c.fillRect(0,0,radarBg.width,radarBg.height);
+  c.setTransform(RADAR_S,0,0,RADAR_S,-radarO[0]*RADAR_S,-radarO[1]*RADAR_S);
+  const cells=city.cellsIn(radarO[0],radarO[1],radarO[0]+n*CH,radarO[1]+n*CH);
+  c.fillStyle='#5c9a45'; for(const C of cells) for(const p of C.parks) c.fill(p.path);
+  c.lineCap='round'; c.lineJoin='round'; c.strokeStyle='#55585e';
+  for(const C of cells) for(const r of C.roads){ c.lineWidth=r.w; c.stroke(r.path); }
+  for(const C of cells) for(const b of C.solids){ c.fillStyle=shade(b.col,0.75); c.beginPath(); b.pts.forEach((p,k)=>k?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1])); c.fill(); }
 }
 function drawMini(){
   mctx.setTransform(1,0,0,1,0,0); mctx.clearRect(0,0,280,280);
   if(mode==='city' && endless()){
-    const bs=BLOCK*TILE, ci=Math.floor(car.x/bs), cj=Math.floor(car.y/bs), key=ci+','+cj;
+    const ci=Math.floor(car.x/city.CH), cj=Math.floor(car.y/city.CH), key=ci+','+cj;
     if(key!==radarKey){ radarKey=key; buildRadar(ci,cj); }
     mm={s:RADAR_S, ox:140-car.x*RADAR_S, oy:140-car.y*RADAR_S};
     mctx.save(); mctx.beginPath(); mctx.rect(10,10,260,260); mctx.clip();
@@ -1023,19 +1028,12 @@ const clamp=(v,a,b)=>v<a?a:v>b?b:v;
 
 // walls near an enemy (Miami grid or endless-city blocks)
 function pushOutSolids(e){
-  forSolidsNear(e.x,e.y,e.r,b=>{
-    const px=clamp(e.x,b.x,b.x+b.w), py=clamp(e.y,b.y,b.y+b.h), dx=e.x-px, dy=e.y-py, d=Math.hypot(dx,dy);
-    if(d>=e.r) return false;
-    if(d>0.01){ e.x+=dx/d*(e.r-d); e.y+=dy/d*(e.r-d); return false; }
-    const L=e.x-b.x, R=b.x+b.w-e.x, U=e.y-b.y, D=b.y+b.h-e.y, m=Math.min(L,R,U,D);   // inside: leave by the nearest edge
-    if(m===L) e.x=b.x-e.r; else if(m===R) e.x=b.x+b.w+e.r; else if(m===U) e.y=b.y-e.r; else e.y=b.y+b.h+e.r;
-    return false;
-  });
+  forSolidsNear(e.x,e.y,e.r,b=>{ const h=circleHit(b,e.x,e.y,e.r); if(h){ e.x+=h.nx*h.pen; e.y+=h.ny*h.pen; } return false; });
   if(!endless()){ e.x=clamp(e.x,e.r,WORLD_W-e.r); e.y=clamp(e.y,e.r,WORLD_H-e.r); }
 }
 function blockedAt(x,y,r){
   if(tileAt(x,y)===WATER) return true;
-  let hit=false; forSolidsNear(x,y,r,b=>(hit=x+r>b.x&&x-r<b.x+b.w&&y+r>b.y&&y-r<b.y+b.h));
+  let hit=false; forSolidsNear(x,y,r,b=>(hit=!!circleHit(b,x,y,r)));
   return hit;
 }
 const inWorld=(x,y,m)=>endless()||(x>m&&y>m&&x<WORLD_W-m&&y<WORLD_H-m);
@@ -1093,7 +1091,7 @@ function killEnemy(e){
 
 function startSurvival(){
   startCity(); resetPerf();
-  world='endless'; blocks.clear(); Object.assign(car,{x:TILE,y:TILE*5,a:-Math.PI/2,vx:0,vy:0,w:0}); cam.x=car.x; cam.y=car.y; radarKey='';
+  world='endless'; city.clear(); Object.assign(car,city.start(),{vx:0,vy:0,w:0}); cam.x=car.x; cam.y=car.y; radarKey='';
   surv={t:0,hp:100,maxHp:100,xp:0,lvl:1,next:xpNeed(1),pendingLv:0,kills:0,enemies:[],gems:[],fire:[],oil:[],splats:[],zaps:[],
     up:{},spawnAcc:0,hordeMin:1,boss:false,teslaT:1,oilT:2,fireT:0,flameT:0,hurtT:0,sfxT:0,gemT:0};
   $('xpbar').hidden=false;
@@ -1103,12 +1101,12 @@ function startSurvival(){
 }
 function endSurvivalView(){
   surv=null; $('xpbar').hidden=true; $('levelup').style.display='none';
-  if(endless()){ world='miami'; blocks.clear(); if(mode==='city'){ resetCar(); cam.x=car.x; cam.y=car.y; } }
+  if(endless()){ world='miami'; city.clear(); if(mode==='city'){ resetCar(); cam.x=car.x; cam.y=car.y; } }
 }
 
 function survUpdate(dt){
   const S=surv, t=(S.t+=dt);
-  S.sfxT-=dt; S.gemT-=dt; evictBlocks(); S.hurtT=Math.max(0,S.hurtT-dt); S.flameT=Math.max(0,S.flameT-dt);
+  S.sfxT-=dt; S.gemT-=dt; city.evict(car.x,car.y); S.hurtT=Math.max(0,S.hurtT-dt); S.flameT=Math.max(0,S.flameT-dt);
   if(t>=SURV_LEN){ survEnd(true); return; }
 
   // waves: a steady trickle that grows, a horde every minute, the police at BOSS_T

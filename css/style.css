@@ -252,3 +252,38 @@ body.is-touch .hints{display:none}
 #start.sub .logo::after{height:4px;margin-top:6px;width:40%}
 #start.sub .view{margin-top:2vh}
 @media (max-width:760px){ .menu-bg{background:linear-gradient(180deg,rgba(4,7,16,.9),rgba(4,7,16,.8) 60%,rgba(4,7,16,.9))} }
+
+/* pause, results and level-up: same slanted look as the main menu */
+#settings,#result,#levelup{background:rgba(4,7,16,.72)}
+#settings .card{max-width:380px;padding:24px 24px 26px}
+#settings h2::before,#result h2::before,#levelup h2::before{display:block;font-size:12px;letter-spacing:.26em;color:var(--cyan);transform:skewX(10deg);margin-bottom:4px}
+#settings h2::before{content:"Sideways City"}
+#settings h2{color:#fff}
+#resume{margin-bottom:18px;padding:14px}
+#settings #audio{gap:8px}
+#settings #audio button,.btn.ghost{position:relative;font:inherit;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#fff;cursor:pointer;
+  background:rgba(10,14,26,.85);border:1px solid rgba(255,255,255,.14);border-left:4px solid transparent;border-radius:0;transform:skewX(-10deg);outline:none;transition:background .15s,border-color .15s}
+#settings #audio button{font-size:15px;min-height:50px}
+#settings #voldown,#settings #volup{font-size:22px;border-left-width:1px}
+#settings #audio button:hover,#settings #audio button:focus-visible,.btn.ghost:hover,.btn.ghost:focus-visible,
+body.pad-nav #settings #audio button:focus,body.pad-nav .btn.ghost:focus{
+  border-left-color:var(--accent);border-color:rgba(47,214,255,.5);background:linear-gradient(90deg,rgba(47,214,255,.26),rgba(10,14,26,.85));outline:none}
+#settings #voldown:hover,#settings #volup:hover,#settings #voldown:focus-visible,#settings #volup:focus-visible{border-left-color:rgba(47,214,255,.5)}
+#settings #mute[aria-pressed="true"]{color:var(--bad)}
+#settings #vol{font-weight:700;text-transform:uppercase;letter-spacing:.1em;font-size:13px;color:rgba(220,226,240,.8)}
+.vol-meter{gap:4px;margin-top:8px}
+.vol-meter i{width:10px;height:12px;border-radius:0;transform:skewX(-14deg);background:rgba(255,255,255,.14)}
+.vol-meter i.on{background:var(--cyan);box-shadow:0 0 6px rgba(47,214,255,.6)}
+.hud .vol-meter{display:none}
+.btn:not(.ghost):hover,.btn:not(.ghost):focus-visible,body.pad-nav .btn:not(.ghost):focus{background:#ffd95e;box-shadow:0 0 18px rgba(255,207,58,.45);outline:none}
+body.pad-nav .overlay button:focus,body.pad-nav .overlay input:focus{outline:none}
+.btnrow .btn{min-width:0}
+#result h2::before{content:"Results"}
+#levelup h2::before{content:"Upgrade"}
+#result .stars{letter-spacing:10px}
+.upcard{border-radius:0;border:1px solid rgba(255,255,255,.14);border-left:4px solid transparent;background:rgba(10,14,26,.85);
+  clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,14px 100%,0 calc(100% - 14px));outline:none}
+.upcard:hover:not(:disabled),.upcard:focus-visible,body.pad-nav .upcard:focus{border-left-color:var(--accent);border-color:rgba(47,214,255,.5);background:linear-gradient(160deg,rgba(47,214,255,.24),rgba(10,14,26,.9))}
+.upcard .un{text-transform:uppercase;letter-spacing:.03em}
+.upcard .ul{color:var(--cyan)}
+.upcard.evo{border-left-color:#ff7a1a;background:linear-gradient(160deg,rgba(255,122,26,.25),rgba(10,14,26,.9))}

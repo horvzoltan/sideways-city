@@ -482,7 +482,7 @@ function setMuted(m){
 }
 function setVol(v){
   vol=Math.max(0,Math.min(10,v)); try{ localStorage.setItem('sc_vol',vol); }catch(e){}
-  volEl.textContent='Volume '+vol; if(isTouch) drawVolMeter();
+  volEl.textContent='Volume '+vol; drawVolMeter();
   if(muted && vol>0) setMuted(false); else applyLevel();
 }
 muteBtn.addEventListener('click',()=>{ initAudio(); setMuted(!muted); muteBtn.blur(); });
@@ -494,7 +494,7 @@ addEventListener('keydown',e=>{
   if(e.code==='Minus'||e.code==='NumpadSubtract'){ initAudio(); setVol(vol-1); }
 });
 volEl.textContent='Volume '+vol; setMuted(muted);
-if(isTouch) drawVolMeter();
+drawVolMeter();
 addEventListener('blur',()=>{ if(AC) AC.suspend(); });
 addEventListener('focus',()=>{ if(AC && running) AC.resume(); });
 

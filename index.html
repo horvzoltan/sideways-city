@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>Sideways City</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+
+    <div class="hud">
+      <div>
+        <div class="big" id="score">0</div>
+        <div class="small" id="sub1">Best drift 0</div>
+        <div class="small" id="sub2"></div>
+        <canvas
+          id="mini"
+          width="280"
+          height="280"
+          aria-label="Map of the track"
+        ></canvas>
+      </div>
+      <div class="right">
+        <div class="big" id="speed">0</div>
+        <div class="small">km/h</div>
+        <div class="small" id="gear">Gear 1</div>
+        <div id="audio">
+          <button id="menuBtn">Menu</button>
+          <button id="resetBtn" aria-label="Put the car back on the track">
+            Reset
+          </button>
+          <button id="voldown" aria-label="Volume down">−</button>
+          <span id="vol" aria-live="polite">Volume 6</span>
+          <button id="volup" aria-label="Volume up">+</button>
+          <button id="mute" aria-pressed="false">Sound on</button>
+        </div>
+        <div class="touch-hud">
+          <button id="resetT" aria-label="Put the car back on the track">Reset</button>
+          <button id="pauseBtn" aria-label="Pause and settings">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div id="combo">
+      <div class="pts" id="cpts">0</div>
+      <div class="mult" id="cmult">x1</div>
+    </div>
+    <div id="toast"></div>
+    <div id="zmsg"></div>
+    <div id="wrong">Wrong way</div>
+    <div id="banner">
+      <div class="n" id="bn"></div>
+      <div class="t" id="bt"></div>
+      <div class="d" id="bd"></div>
+    </div>
+    <div id="result" class="overlay">
+      <div class="card">
+        <h2 id="rTitle">Stage clear</h2>
+        <div class="stars" id="rStars" aria-label=""></div>
+        <p id="rScore"></p>
+        <p id="rBest"></p>
+        <div class="btnrow">
+          <button class="btn" id="rNext">Next stage</button
+          ><button class="btn ghost" id="rRetry">Retry</button
+          ><button class="btn ghost" id="rMenu">Stages</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="settings" class="overlay" role="dialog" aria-modal="true" aria-labelledby="sTitle">
+      <div class="card">
+        <h2 id="sTitle">Paused</h2>
+        <button class="btn" id="resume">Resume</button>
+        <div id="sheetSlot"></div>
+      </div>
+    </div>
+
+    <div class="touch l">
+      <div
+        class="steer"
+        id="steer"
+        role="slider"
+        aria-label="Steering"
+        aria-valuemin="-100"
+        aria-valuemax="100"
+        aria-valuenow="0"
+      >
+        <div class="steer-knob" id="knob"></div>
+      </div>
+    </div>
+    <div class="touch r">
+      <button data-k="hand">Drift</button><button data-k="down">Brake</button
+      ><button data-k="up" class="gas">Gas</button>
+    </div>
+
+    <div id="start" class="overlay">
+      <div class="card">
+        <h1>Sideways City</h1>
+        <p class="intro-short">
+          Stay sideways in the yellow zones, clip the orange cones, beat the
+          target score.
+        </p>
+        <p class="intro">
+          Six drift stages. Stay sideways through the yellow zones, get your
+          rear close to the orange clipping cones, and beat the target score
+          before the clock runs out. Walls and gravel cost you.
+        </p>
+        <div class="garage">
+          <canvas
+            id="preview"
+            width="520"
+            height="260"
+            aria-hidden="true"
+          ></canvas>
+          <div class="paint-name" id="paintName">Candy orange</div>
+          <div
+            class="swatches"
+            id="swatches"
+            role="group"
+            aria-label="Car color"
+          ></div>
+        </div>
+        <h2>Stages</h2>
+        <div class="stages" id="stages"></div>
+        <button class="btn ghost" id="free">Free drive in the city</button>
+        <dl class="keys-only">
+          <dt>↑ / W</dt>
+          <dd>Gas</dd>
+          <dt>↓ / S</dt>
+          <dd>Brake and reverse</dd>
+          <dt>← → / A D</dt>
+          <dd>Steer</dd>
+          <dt>Space</dt>
+          <dd>Handbrake to kick the rear out</dd>
+          <dt>R</dt>
+          <dd>Put the car back on the track</dd>
+          <dt>Esc</dt>
+          <dd>Back to the menu</dd>
+          <dt>M</dt>
+          <dd>Mute or unmute sound</dd>
+          <dt>− / +</dt>
+          <dd>Volume down or up</dd>
+        </dl>
+        <p class="credit">
+          Engine sound: Toyota Supra dyno recording by editboy23 on Freesound,
+          CC0.
+        </p>
+      </div>
+    </div>
+
+    <script src="js/tracks.js"></script>
+    <script src="js/game.js"></script>
+  </body>
+</html>

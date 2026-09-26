@@ -158,13 +158,15 @@ function makeDeco(x,y){
   if(kind==='tires') return {t:'tires',x,y,r:15,ht:0.05,col,clear:40};
   return {t:'tree',x,y,r:24+rnd()*24,ht:0.05+rnd()*0.06,col,clear:60};
 }
+function stageGoals(T,def,i){   // target score and time limit for a built track
+  let per=0; for(const z of T.zones) per+=z.len*0.12+250+z.clips.length*150;
+  return {pass:Math.round(per*def.laps*(1+i*0.06)/100)*100, limit:Math.round(def.laps*T.L/def.v)};
+}
 function loadStage(i){
   const def=STAGES[i]; mode='track'; T=buildTrack(def); theme=THEMES[def.theme];
   T.path=new Path2D(); T.pts.forEach((p,j)=>j?T.path.lineTo(p[0],p[1]):T.path.moveTo(p[0],p[1])); T.path.closePath();
   T.zones.forEach(z=>{ z.path=new Path2D(); for(let q=z.a;q<=z.b;q++){ const p=T.pts[q]; q===z.a?z.path.moveTo(p[0],p[1]):z.path.lineTo(p[0],p[1]); } });
-  let per=0; for(const z of T.zones) per+=z.len*0.12+250+z.clips.length*150;
-  T.pass=Math.round(per*def.laps*(1+i*0.06)/100)*100;
-  T.limit=Math.round(def.laps*T.L/def.v);
+  Object.assign(T,stageGoals(T,def,i));
   T.clipR=52-i*3;
   seed=4242+i*977; decos=[];
   const [x0,y0,x1,y1]=T.bounds, m=500, count=Math.round((x1-x0+2*m)*(y1-y0+2*m)/60000*(theme.dense||1));
@@ -187,7 +189,7 @@ function resetCar(){
 
 const keys={up:false,down:false,left:false,right:false,hand:false};
 const KMAP={ArrowUp:'up',KeyW:'up',ArrowDown:'down',KeyS:'down',ArrowLeft:'left',KeyA:'left',ArrowRight:'right',KeyD:'right',Space:'hand'};
-addEventListener('keydown',e=>{ if(KMAP[e.code]){keys[KMAP[e.code]]=true; e.preventDefault();} if(e.code==='KeyR' && (state==='race'||state==='free')){ wreck(); resetCar(); } if(e.code==='Escape' && state!=='menu') showMenu(); });
+addEventListener('keydown',e=>{ if(KMAP[e.code]){keys[KMAP[e.code]]=true; e.preventDefault();} if(e.code==='KeyR' && (state==='race'||state==='free')){ wreck(); resetCar(); } if(e.code==='Escape'){ if(state!=='menu') showMenu(); else menuBack(); } });
 addEventListener('keyup',e=>{ if(KMAP[e.code]){keys[KMAP[e.code]]=false; e.preventDefault();} });
 document.querySelectorAll('.touch button').forEach(b=>{
   const k=b.dataset.k;
@@ -247,7 +249,7 @@ function navMove(dir){
   const root=activeOverlay(); if(!root) return;
   const items=[...root.querySelectorAll('button,input')].filter(el=>!el.disabled&&!el.hidden&&el.offsetParent!==null&&el.tabIndex>=0);
   const cur=document.activeElement;
-  if(!items.includes(cur)){ (items.find(el=>el.classList.contains('stage'))||items.find(el=>el.classList.contains('btn'))||items[0])?.focus(); return; }
+  if(!items.includes(cur)){ (items.find(el=>el.classList.contains('sel'))||items.find(el=>el.classList.contains('mitem'))||items.find(el=>el.classList.contains('stage'))||items.find(el=>el.classList.contains('btn'))||items[0])?.focus(); return; }
   const r=cur.getBoundingClientRect(), cx=r.left+r.width/2, cy=r.top+r.height/2;
   const [dx,dy]={up:[0,-1],down:[0,1],left:[-1,0],right:[1,0]}[dir];
   let best=null, bestScore=1e9;
@@ -269,19 +271,23 @@ function pollPad(dt){
   padSteer=a<dz?0:Math.sign(p.steer)*Math.pow((a-dz)/(1-dz),1.4);
   const menu=activeOverlay();
   if(menu){
-    document.body.classList.add('pad-nav');
+    if(!document.body.classList.contains('pad-nav')){ document.body.classList.add('pad-nav'); updateHints(); }
     if(p.nav!==navDir){ navDir=p.nav; navT=0.35; if(navDir) navMove(navDir); }
     else if(navDir){ navT-=dt; if(navT<=0){ navT=0.12; navMove(navDir); } }
     if(pressed('a')){ const el=document.activeElement; if(menu.contains(el)&&el!==document.body) el.click(); else navMove('down'); }
-    if(pressed('b')||(state==='pause'&&pressed('start'))){ if(state==='pause') resume(); else if(menu.id==='result') showMenu(); }
+    if(pressed('b')||(state==='pause'&&pressed('start'))){ if(state==='pause') resume(); else if(menu.id==='result') showMenu(); else if(menu.id==='start') menuBack(); }
   } else {
     if(pressed('start')){ pause(); if(state==='pause') $('resume').focus(); }
     if(pressed('y')&&(state==='race'||state==='free')){ wreck(); resetCar(); }
   }
   padPrev=p;
 }
-addEventListener('pointermove',()=>document.body.classList.remove('pad-nav'));
-addEventListener('pointerdown',()=>document.body.classList.remove('pad-nav'));
+const padOff=()=>{ if(document.body.classList.contains('pad-nav')){ document.body.classList.remove('pad-nav'); updateHints(); } };
+addEventListener('pointermove',padOff); addEventListener('pointerdown',padOff);
+addEventListener('keydown',e=>{   // arrow keys move through whichever menu is open
+  const dir={ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right'}[e.code];
+  if(dir && activeOverlay()){ navMove(dir); e.preventDefault(); }
+});
 
 // ---------- effects ----------
 const perf={acc:1,top:1,smoke:1,smokeLife:1};   // survival upgrades tweak these; 1 everywhere else
@@ -1266,7 +1272,7 @@ function survEnd(won){
   $('rStars').textContent=won?'★★★':''; $('rStars').setAttribute('aria-label',won?'Survived':'');
   $('rScore').textContent='Survived '+fmtT(lasted)+', '+S.kills.toLocaleString()+' kills, level '+S.lvl+', score '+score.toLocaleString()+'.';
   $('rBest').textContent='Your best: '+fmtT(rec.t)+' survived, '+rec.kills.toLocaleString()+' kills.'+(record?' New record!':'');
-  $('rNext').style.display='none'; $('rRetry').onclick=startSurvival; $('rMenu').onclick=showMenu;
+  $('rNext').style.display='none'; $('rRetry').onclick=startSurvival; $('rMenu').onclick=()=>showMenu();
   setTimeout(()=>{ if(state==='done'){ $('result').style.display='flex'; $('rRetry').focus(); } },900);
   sfxNotes(won?[523,659,784,1047]:[392,330,262],won?'square':'sawtooth',0.12,0.1);
 }
@@ -1355,6 +1361,9 @@ function frame(t){
     speed=update(dt); updateAudio(dt);
     if(surv) survUpdate(dt);
     if(state==='race'){ run.t+=dt; recordGhost(); if(run.t>=T.limit) finish(false); }
+  } else if(state==='menu' && mode==='city' && !endless()){
+    car.a=-Math.PI/2; car.vx=0; car.vy=-70; car.y+=car.vy*dt;
+    if(car.y<300){ car.y=WORLD_H-300; cam.y=car.y; }
   } else if(state==='count'){
     countT-=dt; aIn.speed=0; aIn.slip=0; aIn.throttle=throttleIn(); updateAudio(dt);
     const n=Math.ceil(countT);
@@ -1394,7 +1403,7 @@ const loadProg=()=>{ try{ return JSON.parse(localStorage.getItem('sc_stages')||'
 const saveProg=p=>{ try{ localStorage.setItem('sc_stages',JSON.stringify(p)); }catch(e){} };
 const starStr=n=>'\u2605'.repeat(n)+'\u2606'.repeat(3-n);
 function clearFx(){ skids.length=0; smoke.length=0; chain.active=false; chain.pts=0; chain.mult=1; chain.time=0; prevWheels=null; score=0; toastEl.style.opacity=0; zmsgEl.style.opacity=0; }
-function hideOverlays(){ $('start').style.display='none'; $('result').style.display='none'; }
+function hideOverlays(){ $('start').style.display='none'; $('result').style.display='none'; document.body.classList.remove('in-menu'); }
 function startStage(i){
   endSurvivalView(); resetPerf();
   hideOverlays(); loadStage(i); clearFx();
@@ -1412,18 +1421,96 @@ function startCity(){
   hideOverlays(); mode='city'; T=null; run=null; clearFx(); buildMini();
   resetCar(); cam.x=car.x; cam.y=car.y; state='free'; bannerEl.style.display='none'; initAudio();
 }
-function showMenu(){
+function showMenu(view){
   if(state==='pause'&&!isTouch) setPauseLayout(false);
   endSurvivalView();
+  if(mode==='track'){ mode='city'; T=null; run=null; clearFx(); buildMini(); resetCar(); cam.x=car.x; cam.y=car.y; }
   state='menu'; pausedFrom=null; silence(); bannerEl.style.display='none'; $('result').style.display='none'; $('settings').style.display='none';
-  renderStageGrid(); $('start').style.display='flex';
+  document.body.classList.add('in-menu');
+  renderStageGrid(); updateMenuStats(); $('start').style.display='flex';
+  showView(typeof view==='string'?view:'main');
+}
+
+// ---------- main menu screens ----------
+const VIEWS={main:'vMain',stages:'vStages',garage:'vGarage',controls:'vControls'};
+let view='main';
+const loadSurv=()=>{ try{ return JSON.parse(localStorage.getItem('sc_surv'))||{t:0,kills:0}; }catch(e){ return {t:0,kills:0}; } };
+function progressTotals(){ const p=loadProg(); let cleared=0, stars=0; STAGES.forEach((_,i)=>{ const s=(p[i]||{}).stars||0; stars+=s; if(s) cleared++; }); return {cleared,stars}; }
+function showView(name){
+  view=name;
+  for(const [k,id] of Object.entries(VIEWS)) $(id).hidden=k!==name;
+  $('start').classList.toggle('sub',name!=='main');
+  const root=$(VIEWS[name]);
+  const first=['.mitem.sel','.stage.sel:not(:disabled)','.mitem:not([hidden])','.stage:not(:disabled)','.swatch','.back'].map(q=>root.querySelector(q)).find(Boolean);
+  select(first);
+  if(document.body.classList.contains('pad-nav')||lastKeyNav) first?.focus({preventScroll:true});
+  if(name==='garage') drawPreview();
+  updateHints();
+}
+function menuBack(){ if(state==='menu' && view!=='main') showView('main'); }
+let lastKeyNav=false;
+addEventListener('keydown',e=>{ if(e.key.startsWith('Arrow')||e.key==='Tab') lastKeyNav=true; });
+addEventListener('pointerdown',()=>{ lastKeyNav=false; });
+function select(el){   // highlight a menu item or stage row and show its details
+  if(!el) return;
+  if(el.classList.contains('mitem')){ document.querySelectorAll('.mitem.sel').forEach(x=>x.classList.remove('sel')); el.classList.add('sel'); setInfo(el.dataset.mode); }
+  if(el.classList.contains('stage')){ document.querySelectorAll('.stage.sel').forEach(x=>x.classList.remove('sel')); el.classList.add('sel'); showStageInfo(+el.dataset.i); }
+}
+$('start').addEventListener('focusin',e=>select(e.target.closest('.mitem,.stage')));
+$('start').addEventListener('mouseover',e=>{ const el=e.target.closest('.mitem,.stage'); if(el && !el.disabled && !el.classList.contains('sel')) select(el); });
+document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.go)));
+document.querySelectorAll('[data-back]').forEach(b=>b.addEventListener('click',()=>showView('main')));
+function statsHtml(rows){ return rows.map(([k,v,cls])=>'<dt>'+k+'</dt><dd'+(cls?' class="'+cls+'"':'')+'>'+v+'</dd>').join(''); }
+function setInfo(mode){
+  const pr=progressTotals(), sv=loadSurv();
+  const M={
+    stages:['Career','Stages','Six drift events from a forgiving bowl to a night-time knot. Stay sideways through the yellow zones, clip the orange cones and beat the target before the clock runs out.',
+      [['Cleared',pr.cleared+' / '+STAGES.length],['Stars',pr.stars+' / '+STAGES.length*3]]],
+    survive:['Survival','Survive the night','Hordes pour in from every side of an endless city. Ramming and tyre smoke kill, your drift combo multiplies the damage, and every level-up brings a new upgrade. Last until dawn.',
+      [['Best time',sv.t?fmtT(sv.t):'None yet'],['Most kills',sv.kills.toLocaleString()],['Length','10 minutes']]],
+    free:['Free roam','Free drive','Cruise Miami Beach at your own pace: Ocean Drive, the causeways over the bay and the art deco streets in between. Chain drifts anywhere.',
+      [['Best drift',best.toLocaleString()]]],
+    garage:['Customise','Garage','Pick a paint for your car. Eight classic colours or any custom shade you like.',[['Current paint',nameEl.textContent]]],
+    controls:['Help','Controls','Keyboard, controller and touch controls. Controller triggers work like pedals.',[]],
+    quit:['Exit','Quit','Close the game and return to the desktop.',[]],
+  }[mode]||['','','',[]];
+  $('miTag').textContent=M[0]; $('miTitle').textContent=M[1]; $('miText').textContent=M[2]; $('miStats').innerHTML=statsHtml(M[3]);
+}
+function updateMenuStats(){
+  const pr=progressTotals(), sv=loadSurv();
+  $('menuStats').innerHTML='<div><span>Stars</span><b>'+pr.stars+'/'+STAGES.length*3+'</b></div><div><span>Best drift</span><b>'+best.toLocaleString()+'</b></div><div><span>Survived</span><b>'+(sv.t?fmtT(sv.t):'--:--')+'</b></div>';
+}
+function updateHints(){
+  const pad=document.body.classList.contains('pad-nav'), back=view!=='main';
+  $('menuHints').innerHTML=pad
+    ?'<span><kbd class="pa">A</kbd>Select</span>'+(back?'<span><kbd class="pb">B</kbd>Back</span>':'')
+    :'<span><kbd>\u2191\u2193</kbd>Navigate</span><span><kbd>Enter</kbd>Select</span>'+(back?'<span><kbd>Esc</kbd>Back</span>':'');
+}
+// stage select preview: the track outline with its drift zones
+const stageCache=[];
+function stageMeta(i){ if(!stageCache[i]){ const T=buildTrack(STAGES[i]); stageCache[i]={T,...stageGoals(T,STAGES[i],i)}; } return stageCache[i]; }
+function showStageInfo(i){
+  const def=STAGES[i], m=stageMeta(i), T=m.T, prog=(loadProg()[i])||{best:0,stars:0}, cv=$('trackPrev'), c=cv.getContext('2d');
+  c.setTransform(1,0,0,1,0,0); c.clearRect(0,0,cv.width,cv.height);
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; for(const p of T.pts){ x0=Math.min(x0,p[0]);y0=Math.min(y0,p[1]);x1=Math.max(x1,p[0]);y1=Math.max(y1,p[1]); }
+  const pad=T.w, sc=Math.min((cv.width-40)/(x1-x0+pad*2),(cv.height-40)/(y1-y0+pad*2));
+  c.setTransform(sc,0,0,sc,cv.width/2-(x0+x1)/2*sc,cv.height/2-(y0+y1)/2*sc);
+  const path=new Path2D(); T.pts.forEach((p,k)=>k?path.lineTo(p[0],p[1]):path.moveTo(p[0],p[1])); path.closePath();
+  c.lineJoin='round'; c.lineCap='round';
+  c.strokeStyle='rgba(47,214,255,.25)'; c.lineWidth=T.w+30/sc; c.stroke(path);
+  c.strokeStyle='#e9edf5'; c.lineWidth=T.w*0.55; c.stroke(path);
+  c.strokeStyle='#ffcf3a'; c.lineWidth=T.w*0.55;
+  for(const z of T.zones){ c.beginPath(); for(let q=z.a;q<=z.b;q++){ const p=T.pts[q]; q===z.a?c.moveTo(p[0],p[1]):c.lineTo(p[0],p[1]); } c.stroke(); }
+  const p=T.pts[0], t=T.tan[0]; c.strokeStyle='#ff4f4f'; c.lineWidth=8/sc; c.beginPath(); c.moveTo(p[0]+t[1]*T.w,p[1]-t[0]*T.w); c.lineTo(p[0]-t[1]*T.w,p[1]+t[0]*T.w); c.stroke();
+  $('siTag').textContent='Stage '+(i+1)+' \u00b7 '+def.theme; $('siName').textContent=def.name; $('siDesc').textContent=def.desc;
+  $('siStats').innerHTML=statsHtml([['Target',m.pass.toLocaleString()],['Laps',def.laps],['Time limit',fmtT(m.limit)],['Drift zones',T.zones.length],['Best',prog.best?prog.best.toLocaleString():'None yet'],['Rating',starStr(prog.stars),'gold'],['Ghost',loadGhost(i)?'Saved':'None']]);
 }
 function renderStageGrid(){
   const prog=loadProg(), grid=$('stages'); grid.innerHTML='';
   STAGES.forEach((d,i)=>{
     const open=i===0||(prog[i-1]&&prog[i-1].stars>0), p=prog[i]||{best:0,stars:0};
-    const b=document.createElement('button'); b.className='stage'; b.disabled=!open; b.title=d.desc;
-    b.innerHTML='<span class="num">Stage '+(i+1)+'</span><span class="nm"></span><span class="st" aria-label="'+p.stars+' of 3 stars">'+starStr(p.stars)+'</span><span class="bs">'+(open?(p.best?'Best '+p.best.toLocaleString():'Not cleared yet'):'Locked: clear stage '+i)+'</span>';
+    const b=document.createElement('button'); b.className='stage'; b.disabled=!open; b.dataset.i=i;
+    b.innerHTML='<span class="num">'+String(i+1).padStart(2,'0')+'</span><span class="nm"></span><span class="st" aria-label="'+p.stars+' of 3 stars">'+starStr(p.stars)+'</span><span class="bs">'+(open?(p.best?'Best '+p.best.toLocaleString():'Not cleared yet'):'Locked \u00b7 clear stage '+i)+'</span>';
     b.querySelector('.nm').textContent=d.name;
     b.addEventListener('click',()=>startStage(i)); grid.appendChild(b);
   });
@@ -1446,7 +1533,7 @@ function finish(completed){
   $('rBest').textContent='Your best here: '+(prog[i].best?prog[i].best.toLocaleString():'none yet')+'.'+ghostMsg;
   const hasNext=stars>0 && i<STAGES.length-1;
   $('rNext').style.display=hasNext?'':'none';
-  $('rNext').onclick=()=>startStage(i+1); $('rRetry').onclick=()=>startStage(i); $('rMenu').onclick=showMenu;
+  $('rNext').onclick=()=>startStage(i+1); $('rRetry').onclick=()=>startStage(i); $('rMenu').onclick=()=>showMenu('stages');
   setTimeout(()=>{ if(state==='done'){ $('result').style.display='flex'; (hasNext?$('rNext'):$('rRetry')).focus(); } },700);
   sfxNotes(stars?[523,659,784,1047]:[392,330,262],stars?'square':'sawtooth',0.12,0.1);
 }
@@ -1462,7 +1549,7 @@ function resume(){ if(state!=='pause') return; state=pausedFrom; pausedFrom=null
 function setPauseLayout(on){   // desktop: HUD buttons move into the pause panel and back
   const audio=$('audio');
   if(on) $('sheetSlot').appendChild(audio); else $('pauseBtn').parentNode.before(audio);
-  $('menuBtn').textContent=on?'Quit to stages':'Menu'; $('resetBtn').textContent=on?'Reset car':'Reset';
+  $('menuBtn').textContent=on?'Quit to menu':'Menu'; $('resetBtn').textContent=on?'Reset car':'Reset';
 }
 $('pauseBtn').addEventListener('click',pause);
 $('resume').addEventListener('click',resume);
@@ -1470,7 +1557,7 @@ $('resetT').addEventListener('click',e=>{ e.currentTarget.blur(); if(state==='ra
 document.addEventListener('visibilitychange',()=>{ if(document.hidden && isTouch) pause(); });
 if(isTouch){
   $('sheetSlot').appendChild($('audio'));
-  $('menuBtn').textContent='Quit to stages'; $('resetBtn').textContent='Reset car';
+  $('menuBtn').textContent='Quit to menu'; $('resetBtn').textContent='Reset car';
 }
 $('free').addEventListener('click',startCity);
 $('survive').addEventListener('click',startSurvival);
@@ -1481,10 +1568,14 @@ $('resetBtn').addEventListener('click',e=>{ e.currentTarget.blur(); resume(); if
 const pv=$('preview'), pctx=pv.getContext('2d');
 function drawPreview(){
   const main=ctx; ctx=pctx;
-  ctx.setTransform(1,0,0,1,0,0);
-  ctx.fillStyle='#3b3e44'; ctx.fillRect(0,0,pv.width,pv.height);
-  ctx.fillStyle='#d9cf9f'; for(let x=10;x<pv.width;x+=70) ctx.fillRect(x,pv.height/2+78,36,6);
-  ctx.setTransform(4.2,0,0,4.2,pv.width/2,pv.height/2);
+  ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,pv.width,pv.height);
+  const W2=pv.width/2, H2=pv.height/2;
+  ctx.strokeStyle='rgba(47,214,255,.12)'; ctx.lineWidth=1.5;   // showroom floor grid in perspective
+  for(let k=-10;k<=10;k++){ ctx.beginPath(); ctx.moveTo(W2+k*30,H2-40); ctx.lineTo(W2+k*110,pv.height); ctx.stroke(); }
+  for(let k=0;k<6;k++){ const y=H2-40+Math.pow(k/5,1.6)*(H2+40); ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(pv.width,y); ctx.stroke(); }
+  const g=ctx.createRadialGradient(W2,H2+30,10,W2,H2+30,W2*0.8); g.addColorStop(0,'rgba(255,255,255,.18)'); g.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.ellipse(W2,H2+30,W2*0.75,H2*0.55,0,0,7); ctx.fill();
+  ctx.setTransform(5.6,0,0,5.6,W2,H2+10);
   drawCar(0,0,-0.32,0,false);
   ctx.setTransform(1,0,0,1,0,0); ctx=main;
 }
@@ -1512,9 +1603,10 @@ function choosePaint(hex,name){
   custom.style.boxShadow=preset?'':'0 0 0 3px var(--accent)';
   customIn.value=paintHex;
   drawPreview();
+  if(document.querySelector('.mitem.sel[data-mode="garage"]')) setInfo('garage');
 }
 choosePaint(paintHex);
 
-resetCar(); cam.x=car.x; cam.y=car.y; buildMini(); renderStageGrid();
+resetCar(); cam.x=car.x; cam.y=car.y; buildMini(); showMenu();
 requestAnimationFrame(frame);
 })();

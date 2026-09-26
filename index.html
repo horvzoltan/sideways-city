@@ -68,7 +68,7 @@
         <div class="btnrow">
           <button class="btn" id="rNext">Next stage</button
           ><button class="btn ghost" id="rRetry">Retry</button
-          ><button class="btn ghost" id="rMenu">Stages</button>
+          ><button class="btn ghost" id="rMenu">Menu</button>
         </div>
       </div>
     </div>
@@ -107,63 +107,91 @@
       ><button data-k="up" class="gas">Gas</button>
     </div>
 
-    <div id="start" class="overlay">
-      <div class="card">
-        <h1>Sideways City</h1>
-        <p class="intro-short">
-          Stay sideways in the yellow zones, clip the orange cones, beat the
-          target score.
-        </p>
-        <p class="intro">
-          Six drift stages. Stay sideways through the yellow zones, get your
-          rear close to the orange clipping cones, and beat the target score
-          before the clock runs out. Walls and gravel cost you.
-        </p>
-        <div class="garage">
-          <canvas
-            id="preview"
-            width="520"
-            height="260"
-            aria-hidden="true"
-          ></canvas>
-          <div class="paint-name" id="paintName">Candy orange</div>
-          <div
-            class="swatches"
-            id="swatches"
-            role="group"
-            aria-label="Car color"
-          ></div>
+    <div id="start" class="menu">
+      <div class="menu-bg" aria-hidden="true"></div>
+      <header class="menu-top">
+        <h1 class="logo"><span class="l1">Sideways</span><span class="l2">City</span></h1>
+        <div class="menu-stats" id="menuStats"></div>
+      </header>
+
+      <section class="view" id="vMain" aria-label="Main menu">
+        <nav class="mlist">
+          <button class="mitem" data-go="stages" data-mode="stages"><span class="mt">Stages</span><span class="ms">Six drift events</span></button>
+          <button class="mitem" id="survive" data-mode="survive"><span class="mt">Survive the night</span><span class="ms">Endless horde mode</span></button>
+          <button class="mitem" id="free" data-mode="free"><span class="mt">Free drive</span><span class="ms">Cruise Miami Beach</span></button>
+          <button class="mitem" data-go="garage" data-mode="garage"><span class="mt">Garage</span><span class="ms">Paint your car</span></button>
+          <button class="mitem" data-go="controls" data-mode="controls"><span class="mt">Controls</span><span class="ms">Keyboard, controller, touch</span></button>
+          <button class="mitem" id="quit" data-mode="quit" hidden><span class="mt">Quit</span><span class="ms">Back to the desktop</span></button>
+        </nav>
+        <aside class="mpanel" id="mInfo" aria-live="polite">
+          <div class="mp-tag" id="miTag"></div>
+          <h2 class="mp-title" id="miTitle"></h2>
+          <p class="mp-text" id="miText"></p>
+          <dl class="mp-stats" id="miStats"></dl>
+        </aside>
+      </section>
+
+      <section class="view" id="vStages" hidden aria-label="Stage select">
+        <div class="vhead"><button class="back" data-back>Back</button><h2>Stage select</h2></div>
+        <div class="vbody">
+          <div class="stages" id="stages"></div>
+          <aside class="mpanel stage-info">
+            <canvas id="trackPrev" width="520" height="340" aria-hidden="true"></canvas>
+            <div class="mp-tag" id="siTag"></div>
+            <h2 class="mp-title" id="siName"></h2>
+            <p class="mp-text" id="siDesc"></p>
+            <dl class="mp-stats" id="siStats"></dl>
+          </aside>
         </div>
-        <h2>Stages</h2>
-        <div class="stages" id="stages"></div>
-        <button class="btn" id="survive">Survive the night</button>
-        <button class="btn ghost" id="free">Free drive in the city</button>
-        <button class="btn ghost" id="quit" hidden>Quit game</button>
-        <dl class="keys-only">
-          <dt>↑ / W</dt>
-          <dd>Gas</dd>
-          <dt>↓ / S</dt>
-          <dd>Brake and reverse</dd>
-          <dt>← → / A D</dt>
-          <dd>Steer</dd>
-          <dt>Space</dt>
-          <dd>Handbrake to kick the rear out</dd>
-          <dt>R</dt>
-          <dd>Put the car back on the track</dd>
-          <dt>Esc</dt>
-          <dd>Back to the menu</dd>
-          <dt>M</dt>
-          <dd>Mute or unmute sound</dd>
-          <dt>− / +</dt>
-          <dd>Volume down or up</dd>
-          <dt>Controller</dt>
-          <dd>Stick steers, RT gas, LT brake, A drift, Y reset, Start pause</dd>
-        </dl>
-        <p class="credit">
-          Engine sound: Toyota Supra dyno recording by editboy23 on Freesound,
-          CC0.
-        </p>
-      </div>
+      </section>
+
+      <section class="view" id="vGarage" hidden aria-label="Garage">
+        <div class="vhead"><button class="back" data-back>Back</button><h2>Garage</h2></div>
+        <div class="vbody garage">
+          <div class="showroom"><canvas id="preview" width="720" height="360" aria-hidden="true"></canvas></div>
+          <div class="paint">
+            <div class="mp-tag">Paint</div>
+            <div class="paint-name" id="paintName">Candy orange</div>
+            <div class="swatches" id="swatches" role="group" aria-label="Car color"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="vControls" hidden aria-label="Controls">
+        <div class="vhead"><button class="back" data-back>Back</button><h2>Controls</h2></div>
+        <div class="vbody controls">
+          <div class="mpanel">
+            <div class="mp-tag">Keyboard</div>
+            <dl class="keys">
+              <dt>↑ / W</dt><dd>Gas</dd>
+              <dt>↓ / S</dt><dd>Brake and reverse</dd>
+              <dt>← → / A D</dt><dd>Steer</dd>
+              <dt>Space</dt><dd>Handbrake to kick the rear out</dd>
+              <dt>R</dt><dd>Put the car back on the road</dd>
+              <dt>Esc</dt><dd>Back to the menu</dd>
+              <dt>M</dt><dd>Mute or unmute</dd>
+              <dt>− / +</dt><dd>Volume</dd>
+            </dl>
+          </div>
+          <div class="mpanel">
+            <div class="mp-tag">Controller</div>
+            <dl class="keys">
+              <dt>Left stick</dt><dd>Steer</dd>
+              <dt>RT / LT</dt><dd>Gas and brake, analog like pedals</dd>
+              <dt>A / RB</dt><dd>Handbrake</dd>
+              <dt>Y</dt><dd>Reset car</dd>
+              <dt>Start</dt><dd>Pause</dd>
+            </dl>
+            <div class="mp-tag" style="margin-top:18px">Touch</div>
+            <p class="mp-text">Drag the slider to steer. Gas, Brake and Drift buttons on the right. Pause from the top corner.</p>
+          </div>
+        </div>
+      </section>
+
+      <footer class="menu-foot">
+        <div class="hints" id="menuHints"></div>
+        <p class="credit">Engine sound: Supra dyno recording by editboy23 on Freesound, CC0.</p>
+      </footer>
     </div>
 
     <script src="js/tracks.js"></script>

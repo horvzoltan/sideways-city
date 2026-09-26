@@ -14,7 +14,7 @@ The game loads its engine sound from `assets/`, so open it through a local web s
 
 ## Survive the night
 
-A survival mode in the Miami city, in the spirit of Vampire Survivors. Hordes chase the car for 10 minutes; the police arrive at 7:30. Ramming and tyre smoke kill, and the drift combo multiplies all damage. Kills drop XP gems, and each level-up offers 3 upgrade cards (keys 1–3, tap, or controller). Maxing Flaming tyres and Toxic smoke unlocks the Inferno drift evolution. Best time and kills are saved in the browser.
+A survival mode in the spirit of Vampire Survivors, played in an endless city: blocks are generated from their grid position as you drive (`genBlock()` in `js/game.js`), so there are no map edges or dead ends, and the minimap becomes a radar around the car. Hordes chase the car for 10 minutes; the police arrive at 7:30. Ramming and tyre smoke kill, and the drift combo multiplies all damage. Kills drop XP gems, and each level-up offers 3 upgrade cards (keys 1–3, tap, or controller). Maxing Flaming tyres and Toxic smoke unlocks the Inferno drift evolution. Best time and kills are saved in the browser.
 
 Tuning lives in the survival section of `js/game.js`: `ETYPES` (enemy stats), `UPGRADES` (cards), `survUpdate()` (spawn rates, hordes, weapon damage) and `xpNeed()` (level curve).
 

@@ -14,26 +14,26 @@
     <div id="xpbar" hidden><i id="xpfill"></i></div>
 
     <div class="hud">
-      <div>
-        <div class="big" id="score">0</div>
-        <div class="small" id="sub1">Best drift 0</div>
-        <div class="small" id="sub2"></div>
-        <canvas
-          id="mini"
-          width="280"
-          height="280"
-          aria-label="Map of the track"
-        ></canvas>
+      <div class="hud-l">
+        <div class="hud-card score-card">
+          <span class="hl">Score</span>
+          <div class="big" id="score">0</div>
+          <div class="small" id="sub1">Best drift 0</div>
+          <div class="small" id="sub2"></div>
+        </div>
+        <canvas id="mini" width="280" height="280" aria-label="Map of the track"></canvas>
       </div>
-      <div class="right">
-        <div class="big" id="speed">0</div>
-        <div class="small">km/h</div>
-        <div class="small" id="gear">Gear 1</div>
+      <div class="hud-r">
+        <div class="hud-card speed-card">
+          <div class="spd"><span class="big" id="speed">0</span><span class="unit">km/h</span></div>
+          <div class="gearrow">
+            <div class="rpm" id="rpm" aria-hidden="true"></div>
+            <span class="gear" id="gear" aria-label="Gear">1</span>
+          </div>
+        </div>
         <div id="audio">
-          <button id="menuBtn">Menu</button>
-          <button id="resetBtn" aria-label="Put the car back on the track">
-            Reset
-          </button>
+          <button id="menuBtn">Quit to menu</button>
+          <button id="resetBtn" aria-label="Put the car back on the track">Reset car</button>
           <button id="voldown" aria-label="Volume down">−</button>
           <span id="vol" aria-live="polite">Volume 6</span>
           <button id="volup" aria-label="Volume up">+</button>
@@ -42,7 +42,8 @@
         <div class="touch-hud">
           <button id="resetT" aria-label="Put the car back on the track">Reset</button>
           <button id="pauseBtn" aria-label="Pause and settings">
-            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg>
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg>
+            <span class="kb">Pause</span>
           </button>
         </div>
       </div>
@@ -168,7 +169,7 @@
               <dt>← → / A D</dt><dd>Steer</dd>
               <dt>Space</dt><dd>Handbrake to kick the rear out</dd>
               <dt>R</dt><dd>Put the car back on the road</dd>
-              <dt>Esc</dt><dd>Back to the menu</dd>
+              <dt>Esc / P</dt><dd>Pause</dd>
               <dt>M</dt><dd>Mute or unmute</dd>
               <dt>− / +</dt><dd>Volume</dd>
             </dl>

@@ -193,7 +193,11 @@ function resetCar(){
 
 const keys={up:false,down:false,left:false,right:false,hand:false};
 const KMAP={ArrowUp:'up',KeyW:'up',ArrowDown:'down',KeyS:'down',ArrowLeft:'left',KeyA:'left',ArrowRight:'right',KeyD:'right',Space:'hand'};
-addEventListener('keydown',e=>{ if(KMAP[e.code]){keys[KMAP[e.code]]=true; e.preventDefault();} if(e.code==='KeyR' && (state==='race'||state==='free')){ wreck(); resetCar(); } if(e.code==='Escape'){ if(state!=='menu') showMenu(); else menuBack(); } });
+addEventListener('keydown',e=>{ if(KMAP[e.code]){keys[KMAP[e.code]]=true; e.preventDefault();} if(e.code==='KeyR' && (state==='race'||state==='free')){ wreck(); resetCar(); } if(e.code==='Escape'||e.code==='KeyP'){   // Esc and P pause while driving; Esc also steps back in menus
+    if(state==='race'||state==='free'||state==='count') pause();
+    else if(state==='pause') resume();
+    else if(e.code==='Escape'){ if(state==='menu') menuBack(); else if(state==='done') showMenu(); }
+  } });
 addEventListener('keyup',e=>{ if(KMAP[e.code]){keys[KMAP[e.code]]=false; e.preventDefault();} });
 document.querySelectorAll('.touch button').forEach(b=>{
   const k=b.dataset.k;
@@ -1397,6 +1401,8 @@ function survOverlay(){   // night: dark except around the headlights, red flash
 // ---------- loop ----------
 const gearEl=$('gear'), scoreEl=$('score'), sub1El=$('sub1'), sub2El=$('sub2'), speedEl=$('speed'), cptsEl=$('cpts'), cmultEl=$('cmult');
 const bannerEl=$('banner'), wrongEl=$('wrong');
+const RPM_SEGS=14, rpmSegs=[]; let rpmLit=-1;   // segmented rev bar next to the gear, last three light up red
+for(let k=0;k<RPM_SEGS;k++){ const el=document.createElement('i'); if(k>=RPM_SEGS-3) el.className='hot'; $('rpm').appendChild(el); rpmSegs.push(el); }
 let running=false, last=0, countT=0, goT=0, lastBeep=0;
 const fmtT=t=>{ t=Math.max(0,Math.ceil(t)); return Math.floor(t/60)+':'+String(t%60).padStart(2,'0'); };
 function silence(){
@@ -1428,16 +1434,18 @@ function frame(t){
   if(state!=='menu') drawMini();
   scoreEl.textContent=score.toLocaleString();
   speedEl.textContent=Math.round(speed*0.32);
-  gearEl.textContent='Gear '+(es.gear+1)+'\u2003'+(Math.round(es.rpm/100)*100).toLocaleString()+' rpm';
+  gearEl.textContent=es.gear+1;
+  const lit=Math.round(Math.min(1,es.rpm/LIMIT)*RPM_SEGS);
+  if(lit!==rpmLit){ rpmLit=lit; rpmSegs.forEach((el,k)=>el.classList.toggle('on',k<lit)); }
   if(mode==='track' && run){
     sub1El.textContent='Target '+T.pass.toLocaleString();
     const left=T.limit-run.t;
-    sub2El.textContent='Lap '+Math.min(run.lap+1,run.def.laps)+'/'+run.def.laps+'\u2003'+fmtT(left);
+    sub2El.textContent='Lap '+Math.min(run.lap+1,run.def.laps)+'/'+run.def.laps+'  \u00b7  '+fmtT(left);
     sub2El.classList.toggle('warn',left<10);
     wrongEl.style.display=run.wrongT>0.7&&state==='race'?'block':'none';
   } else if(surv){
     sub1El.textContent='Dawn in '+fmtT(SURV_LEN-surv.t);
-    sub2El.textContent='Level '+surv.lvl+'\u2003'+surv.kills.toLocaleString()+' kills';
+    sub2El.textContent='Level '+surv.lvl+'  \u00b7  '+surv.kills.toLocaleString()+' kills';
     sub2El.classList.remove('warn'); wrongEl.style.display='none';
     $('xpfill').style.width=(100*surv.xp/surv.next).toFixed(1)+'%';
   } else { sub1El.textContent='Best drift '+best.toLocaleString(); sub2El.textContent=''; wrongEl.style.display='none'; }
@@ -1472,7 +1480,6 @@ function startCity(){
   resetCar(); cam.x=car.x; cam.y=car.y; state='free'; bannerEl.style.display='none'; initAudio();
 }
 function showMenu(view){
-  if(state==='pause'&&!isTouch) setPauseLayout(false);
   endSurvivalView();
   if(mode==='track'){ mode='city'; T=null; run=null; clearFx(); buildMini(); resetCar(); cam.x=car.x; cam.y=car.y; }
   state='menu'; pausedFrom=null; silence(); bannerEl.style.display='none'; $('result').style.display='none'; $('settings').style.display='none';
@@ -1594,22 +1601,14 @@ let pausedFrom=null;
 function pause(){ if(state!=='race'&&state!=='free'&&state!=='count') return;
   pausedFrom=state; state='pause'; for(const k in keys) keys[k]=false; setSteer(0); silence();
   document.querySelectorAll('.touch button.on').forEach(b=>b.classList.remove('on'));
-  if(!isTouch) setPauseLayout(true);
-  $('settings').style.display='flex'; }
-function resume(){ if(state!=='pause') return; state=pausedFrom; pausedFrom=null; $('settings').style.display='none'; if(!isTouch) setPauseLayout(false); }
-function setPauseLayout(on){   // desktop: HUD buttons move into the pause panel and back
-  const audio=$('audio');
-  if(on) $('sheetSlot').appendChild(audio); else $('pauseBtn').parentNode.before(audio);
-  $('menuBtn').textContent=on?'Quit to menu':'Menu'; $('resetBtn').textContent=on?'Reset car':'Reset';
-}
+  $('settings').style.display='flex';
+  if(!isTouch) $('resume').focus({preventScroll:true}); }
+function resume(){ if(state!=='pause') return; state=pausedFrom; pausedFrom=null; $('settings').style.display='none'; }
 $('pauseBtn').addEventListener('click',pause);
 $('resume').addEventListener('click',resume);
 $('resetT').addEventListener('click',e=>{ e.currentTarget.blur(); if(state==='race'||state==='free'){ wreck(); resetCar(); } });
-document.addEventListener('visibilitychange',()=>{ if(document.hidden && isTouch) pause(); });
-if(isTouch){
-  $('sheetSlot').appendChild($('audio'));
-  $('menuBtn').textContent='Quit to menu'; $('resetBtn').textContent='Reset car';
-}
+document.addEventListener('visibilitychange',()=>{ if(document.hidden) pause(); });
+$('sheetSlot').appendChild($('audio'));   // volume, sound, reset and quit live in the pause panel
 $('free').addEventListener('click',startCity);
 $('survive').addEventListener('click',startSurvival);
 if(window.desktop){ $('quit').hidden=false; $('quit').addEventListener('click',()=>window.desktop.quit()); }

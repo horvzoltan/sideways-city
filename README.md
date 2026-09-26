@@ -39,6 +39,6 @@ Progress, best scores, paint choice and volume are saved in the browser's localS
 
 ## Credits
 
-Engine sound: "Import car revs on Chassis Dyno with Turbo" by editboy23 on Freesound (https://freesound.org/people/editboy23/sounds/496171/), licensed CC0. The file here is Freesound's 128 kbps preview. For better quality, download the original WAV from Freesound (free account), convert it to MP3 and replace `assets/supra-engine.mp3`, keeping the same timing.
+Engine sound: "Import car revs on Chassis Dyno with Turbo" by editboy23 on Freesound (https://freesound.org/people/editboy23/sounds/496171/), licensed CC0. The file here is the original 48 kHz WAV converted to 320 kbps MP3 (`ffmpeg -i original.wav -codec:a libmp3lame -b:a 320k assets/supra-engine.mp3`). The engine sound jumps to fixed positions in the recording, so any replacement must keep the exact same timing.
 
 Font: Chakra Petch from Google Fonts (SIL Open Font License).

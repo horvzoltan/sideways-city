@@ -52,13 +52,13 @@ build/                      app icon (icon.svg is the source)
 ## Where to change things
 
 In `js/tracks.js`:
-- `STAGES` holds each stage: `pts` are the track's control points (the road is a smooth curve through them, driven in that order), `w` is road width, `r` is gravel run-off width, `laps`, `v` sets the time limit (higher = less time), and `theme`.
+- `STAGES` holds each stage (they unlock in order and progress is saved by position, so add new stages at the end): `pts` are the track's control points (the road is a smooth curve through them, driven in that order), `w` is road width, `r` is gravel run-off width, `laps`, `v` sets the time limit (higher = less time), and `theme`.
 - Drift zones and clipping points are found automatically from the corners in `buildTrack()`.
 
 In `js/game.js`:
 - **Handling:** the `update()` function. Grip values (`7.5` normal, `3.0` under power, `1.0` handbrake), acceleration (`540`), top speed (`640`) and steering rate (`2.8`).
 - **Scoring:** `trackTick()` and `judgeZone()` for zones and clipping points; target scores and time limits in `loadStage()`.
-- **Themes:** `THEMES` for colors and scenery per stage.
+- **Themes:** `THEMES` for colors and scenery per stage. An optional `grip` makes a theme slippery (Frozen Lake uses 0.72), and `night` adds the headlight darkness.
 - **Paint colors:** `PAINTS`.
 - **Engine sound:** the granular playback section (`ENG` tables map rpm to positions in the recording).
 

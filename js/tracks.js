@@ -1,4 +1,4 @@
-// ---------- stages: drift tracks ----------
+// ---------- stages: drift tracks (unlocked in order; progress is stored by index, so add new ones at the end) ----------
 const STAGES=[
  {name:'Practice Bowl', desc:'Wide and forgiving. Learn to link the corners.', w:230, r:120, laps:2, v:270, theme:'grass',
   pts:[[500,500],[2300,500],[2750,900],[2700,1500],[2250,1800],[1500,1700],[1150,2050],[1250,2550],[750,2750],[380,2250],[350,1200]]},
@@ -11,6 +11,18 @@ const STAGES=[
   pts:[[450,520],[950,300],[1450,620],[1950,300],[2450,620],[2950,420],[3150,950],[2800,1420],[3150,1920],[2850,2450],[2300,2750],[1800,2420],[1300,2750],[800,2420],[380,2620],[230,2000],[560,1500],[230,1020]]},
  {name:"Devil's Knot", desc:'Night run. Tight, twisted and unforgiving. Only the best finish.', w:138, r:38, laps:2, v:330, theme:'night',
   pts:[[500,420],[1700,420],[2050,720],[1750,1040],[1250,960],[950,1250],[1250,1550],[2200,1430],[2600,930],[3050,1200],[2950,2000],[2450,2250],[2150,1930],[1700,2250],[2000,2750],[1300,2850],[700,2550],[900,2020],[420,1720],[300,1000]]},
+ {name:'Ocean Drive', desc:'Fast sweepers between the sand and the palms. Carry your speed.', w:170, r:90, laps:2, v:300, theme:'beach',
+  pts:[[400,500],[1600,420],[2800,560],[3200,1000],[2900,1500],[2200,1450],[1700,1800],[2100,2300],[2900,2400],[3100,2800],[2500,3150],[1300,3050],[700,2700],[900,2100],[500,1600],[300,1000]]},
+ {name:'Frozen Lake', desc:'Wide loops on sheet ice. Less grip everywhere, so start the slide early.', w:200, r:110, laps:2, v:260, theme:'snow',
+  pts:[[500,600],[2000,500],[2800,900],[2700,1500],[2000,1600],[1500,1300],[900,1500],[1100,2100],[2000,2200],[2800,2500],[2500,3000],[1200,3000],[500,2500],[300,1500]]},
+ {name:'Harbour Hairpins', desc:'Five hairpins stacked between the containers. Flick it early and hold the angle.', w:170, r:70, laps:2, v:300, theme:'port',
+  pts:[[400,400],[2700,400],[3000,650],[2700,900],[900,900],[650,1150],[900,1400],[2700,1400],[3000,1650],[2700,1900],[900,1900],[650,2150],[900,2400],[2700,2400],[3050,2750],[2600,3050],[600,3000],[250,2500],[250,900]]},
+ {name:'Neon Downtown', desc:'Square city corners under the neon. Tight walls and no run-off to speak of.', w:160, r:50, laps:2, v:310, theme:'neon',
+  pts:[[500,500],[1500,500],[1700,700],[1700,1200],[1900,1400],[2600,1400],[2800,1600],[2800,2400],[2600,2600],[1900,2600],[1700,2400],[1700,2000],[1500,1800],[800,1800],[600,2000],[600,2600],[400,2800],[250,2600],[250,700]]},
+ {name:'Canyon Run', desc:'A long, fast run with snaking sections at both ends. Commit or lose the zone.', w:150, r:50, laps:2, v:340, theme:'desert',
+  pts:[[500,400],[1500,300],[2500,450],[3300,300],[3700,700],[3400,1200],[3700,1700],[3300,2200],[2500,2000],[1800,2300],[1200,2000],[600,2300],[300,1800],[700,1300],[300,800]]},
+ {name:'Midnight Pass', desc:'The narrowest, twistiest road of all, in the dark. The final test.', w:135, r:36, laps:2, v:350, theme:'night',
+  pts:[[500,400],[1400,350],[1800,650],[1500,1000],[1900,1300],[2600,1100],[3000,1400],[2800,1900],[2200,1800],[1800,2200],[2300,2600],[1800,3000],[1000,2900],[600,2500],[1000,2000],[700,1500],[300,1200],[350,700]]}
 ];
 function eightPts(){ const p=[]; for(let i=0;i<16;i++){ const t=i/16*Math.PI*2; p.push([1750+1400*Math.cos(t), 1450+1150*Math.sin(t)*Math.cos(t)]); } return p; }
 

@@ -131,6 +131,9 @@ const THEMES={
   stadium:{out:'#5d6068',gravel:'#8a8a86',asph:'#34363b',barrier:['#eeeae0','#d9a21b'],deco:['tires','box'],cols:['#7a3b3b','#3b5a7a','#6b6f78']},
   desert: {out:'#b48a5c',gravel:'#c9a574',asph:'#46433f',barrier:['#eeeae0','#c8352b'],deco:['rock'],cols:['#8f6a45','#a07a50','#7d5c3c']},
   night:  {out:'#1c2a1f',gravel:'#5b574a',asph:'#2c2e33',barrier:['#d8d4ca','#b3302a'],deco:['tree'],cols:['#15241a','#1a2d1f','#203626'],dense:1.6,night:true},
+  beach:  {out:'#e9d7a6',gravel:'#d6bf88',asph:'#3d3f46',barrier:['#f1ede4','#2bb5b0'],deco:['palm'],cols:FRONDS,dense:0.7},
+  snow:   {out:'#e4ebf0',gravel:'#c7d1da',asph:'#56606c',barrier:['#f4f6f8','#2f6fb5'],deco:['tree'],cols:['#2c4a3c','#35574a','#23402f'],dense:1.3,grip:0.72},   // grip: ice
+  neon:   {out:'#15131f',gravel:'#2a2838',asph:'#24232e',barrier:['#ff3fa4','#2fd6ff'],deco:['box'],cols:['#3a2f5c','#23365e','#512a4f','#2b2b3d'],dense:0.9,night:true},
 };
 let mode='city', T=null, theme=null, decos=[], run=null, state='menu';
 function nearestOn(x,y,i0,i1){
@@ -156,18 +159,19 @@ function makeDeco(x,y){
     return {t:'box',x:x-w/2,y:y-h/2,w,h,ht:0.05+rnd()*0.09,col,vents:0,s:rnd(),cx:x,cy:y,clear:110}; }
   if(kind==='rock') return {t:'rock',x,y,r:18+rnd()*34,ht:0.03+rnd()*0.03,col,clear:70};
   if(kind==='tires') return {t:'tires',x,y,r:15,ht:0.05,col,clear:40};
+  if(kind==='palm') return Object.assign(makePalm(x,y,rnd),{clear:60});
   return {t:'tree',x,y,r:24+rnd()*24,ht:0.05+rnd()*0.06,col,clear:60};
 }
 function stageGoals(T,def,i){   // target score and time limit for a built track
   let per=0; for(const z of T.zones) per+=z.len*0.12+250+z.clips.length*150;
-  return {pass:Math.round(per*def.laps*(1+i*0.06)/100)*100, limit:Math.round(def.laps*T.L/def.v)};
+  return {pass:Math.round(per*def.laps*(1+Math.min(i,8)*0.06)/100)*100, limit:Math.round(def.laps*T.L/def.v)};
 }
 function loadStage(i){
   const def=STAGES[i]; mode='track'; T=buildTrack(def); theme=THEMES[def.theme];
   T.path=new Path2D(); T.pts.forEach((p,j)=>j?T.path.lineTo(p[0],p[1]):T.path.moveTo(p[0],p[1])); T.path.closePath();
   T.zones.forEach(z=>{ z.path=new Path2D(); for(let q=z.a;q<=z.b;q++){ const p=T.pts[q]; q===z.a?z.path.moveTo(p[0],p[1]):z.path.lineTo(p[0],p[1]); } });
   Object.assign(T,stageGoals(T,def,i));
-  T.clipR=52-i*3;
+  T.clipR=Math.max(30,52-i*3);
   seed=4242+i*977; decos=[];
   const [x0,y0,x1,y1]=T.bounds, m=500, count=Math.round((x1-x0+2*m)*(y1-y0+2*m)/60000*(theme.dense||1));
   for(let k=0;k<count;k++){
@@ -579,7 +583,7 @@ const soft=s=>s===GRASS||s===GRAVEL||s===SAND;
 function update(dt){
   const fx=Math.cos(car.a), fy=Math.sin(car.a), rx=-fy, ry=fx;
   let vf=car.vx*fx+car.vy*fy, vr=car.vx*rx+car.vy*ry;
-  const surf=surfAt(car.x,car.y), g=GRIP[surf];
+  const surf=surfAt(car.x,car.y), g=GRIP[surf]*(mode==='track'&&theme.grip||1);
 
   const thr=throttleIn(), brk=brakeIn();
   if(thr) vf += (vf<0?1100:540*perf.acc)*thr*dt*(0.6+0.4*g);
@@ -970,6 +974,7 @@ function renderTrack(hw,hh){
   vis.sort((a,b)=>Math.hypot((b.cx??b.x)-cam.x,(b.cy??b.y)-cam.y)-Math.hypot((a.cx??a.x)-cam.x,(a.cy??a.y)-cam.y));
   for(const d of vis){
     if(d.t==='box'){ drawBlock(d); continue; }
+    if(d.t==='palm'){ drawPalm(d); continue; }
     const ox=d.x+(d.x-cam.x)*d.ht, oy=d.y+(d.y-cam.y)*d.ht;
     ctx.fillStyle='rgba(0,0,0,.28)'; ctx.beginPath(); ctx.arc(d.x+8,d.y+10,d.r,0,7); ctx.fill();
     if(d.t==='tree'){
@@ -1493,7 +1498,7 @@ function statsHtml(rows){ return rows.map(([k,v,cls])=>'<dt>'+k+'</dt><dd'+(cls?
 function setInfo(mode){
   const pr=progressTotals(), sv=loadSurv();
   const M={
-    stages:['Career','Stages','Six drift events from a forgiving bowl to a night-time knot. Stay sideways through the yellow zones, clip the orange cones and beat the target before the clock runs out.',
+    stages:['Career','Stages',STAGES.length+' drift events, from a forgiving practice bowl to frozen lakes, neon downtown and a midnight mountain pass. Stay sideways through the yellow zones, clip the orange cones and beat the target before the clock runs out.',
       [['Cleared',pr.cleared+' / '+STAGES.length],['Stars',pr.stars+' / '+STAGES.length*3]]],
     survive:['Survival','Survive the night','Hordes pour in from every side of an endless city. Ramming and tyre smoke kill, your drift combo multiplies the damage, and every level-up brings a new upgrade. Last until dawn.',
       [['Best time',sv.t?fmtT(sv.t):'None yet'],['Most kills',sv.kills.toLocaleString()],['Length','10 minutes']]],
@@ -1636,6 +1641,7 @@ function choosePaint(hex,name){
 }
 choosePaint(paintHex);
 
+document.querySelector('[data-mode=stages] .ms').textContent=STAGES.length+' drift events';
 resetCar(); cam.x=car.x; cam.y=car.y; buildMini(); showMenu();
 requestAnimationFrame(frame);
 })();

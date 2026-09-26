@@ -287,3 +287,10 @@ body.pad-nav .overlay button:focus,body.pad-nav .overlay input:focus{outline:non
 .upcard .un{text-transform:uppercase;letter-spacing:.03em}
 .upcard .ul{color:var(--cyan)}
 .upcard.evo{border-left-color:#ff7a1a;background:linear-gradient(160deg,rgba(255,122,26,.25),rgba(10,14,26,.9))}
+
+/* stage list: two columns once there are more stages than fit in one */
+.stages{display:grid;grid-auto-flow:column;grid-template-rows:repeat(6,auto);grid-template-columns:1fr 1fr;gap:8px 12px}
+.stage{padding:8px 14px;grid-template-columns:42px 1fr auto}
+.stage .num{font-size:24px}
+.stage .nm{font-size:16px}
+@media (max-width:760px){ .stages{grid-auto-flow:row;grid-template-rows:none;grid-template-columns:1fr} }

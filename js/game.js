@@ -954,6 +954,7 @@ if(isTouch){
   $('menuBtn').textContent='Quit to stages'; $('resetBtn').textContent='Reset car';
 }
 $('free').addEventListener('click',startCity);
+if(window.desktop){ $('quit').hidden=false; $('quit').addEventListener('click',()=>window.desktop.quit()); }
 $('resetBtn').addEventListener('click',e=>{ e.currentTarget.blur(); resume(); if(state==='race'||state==='free'){ wreck(); resetCar(); } });
 
 // ---------- garage: pick a paint before driving ----------

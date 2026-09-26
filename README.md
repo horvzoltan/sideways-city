@@ -44,6 +44,7 @@ js/tracks.js                the six stage layouts and track geometry
 js/city.js                  endless city generator for the survival mode
 js/game.js                  everything else (physics, drawing, sound, scoring, menus)
 assets/supra-engine.mp3     engine recording used for the car sound
+assets/music/               music tracks
 assets/fonts/               Chakra Petch, bundled so the game works offline
 desktop/                    Electron main process and preload
 build/                      app icon (icon.svg is the source)
@@ -67,5 +68,7 @@ Progress, best scores, paint choice and volume are saved in the browser's localS
 ## Credits
 
 Engine sound: "Import car revs on Chassis Dyno with Turbo" by editboy23 on Freesound (https://freesound.org/people/editboy23/sounds/496171/), licensed CC0. The file here is the original 48 kHz WAV converted to 320 kbps MP3 (`ffmpeg -i original.wav -codec:a libmp3lame -b:a 320k assets/supra-engine.mp3`). The engine sound jumps to fixed positions in the recording, so any replacement must keep the exact same timing.
+
+Menu music: "Liquid Flame" by Of Far Different Nature, released as CC0. `assets/music/menu-liquid-flame.mp3` is the original WAV encoded with `ffmpeg -i in.wav -codec:a libmp3lame -q:a 3`. Music plays from the music section of `js/game.js` (`setMusic()`), fading in on the menu and out when driving.
 
 Font: Chakra Petch (SIL Open Font License, see `assets/fonts/OFL.txt`).

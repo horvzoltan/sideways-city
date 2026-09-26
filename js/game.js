@@ -338,6 +338,23 @@ function initAudio(){
   skidGain=G(0);
   const n=AC.createBufferSource(); n.buffer=noiseBuf; n.loop=true;
   n.connect(skidFilt).connect(skidGain).connect(comp); n.start();
+  // music streams from an <audio> element into its own gain, after the master volume and mute
+  musicGain=G(0); musicGain.connect(master);
+  try{ AC.createMediaElementSource(menuMusic).connect(musicGain); }catch(e){}
+  setMusic(musicOn);
+}
+
+// ---------- music ----------
+// Menu track: "Liquid Flame" by Of Far Different Nature (CC0). Fades in on the menu, out when driving.
+const menuMusic=new Audio('assets/music/menu-liquid-flame.mp3'); menuMusic.loop=true; menuMusic.preload='auto';
+const MUSIC_LEVEL=0.45;
+let musicGain=null, musicOn=false, musicStop=0;
+function setMusic(on){
+  musicOn=on;
+  if(!AC||!musicGain) return;   // starts once audio is allowed (first click or key in a browser)
+  const t=AC.currentTime; clearTimeout(musicStop);
+  if(on){ if(AC.state==='suspended') AC.resume(); if(menuMusic.paused) menuMusic.play().catch(()=>{}); musicGain.gain.cancelScheduledValues(t); musicGain.gain.setTargetAtTime(MUSIC_LEVEL,t,0.5); }
+  else { musicGain.gain.cancelScheduledValues(t); musicGain.gain.setTargetAtTime(0,t,0.25); musicStop=setTimeout(()=>{ if(!musicOn) menuMusic.pause(); },1500); }
 }
 
 function lookup(tab,hz){
@@ -500,7 +517,7 @@ addEventListener('keydown',e=>{
 volEl.textContent='Volume '+vol; setMuted(muted);
 drawVolMeter();
 addEventListener('blur',()=>{ if(AC) AC.suspend(); });
-addEventListener('focus',()=>{ if(AC && running) AC.resume(); });
+addEventListener('focus',()=>{ if(AC && (running||musicOn)) AC.resume(); });
 
 // ---------- scoring ----------
 let score=0, best=0;
@@ -1436,7 +1453,7 @@ const loadProg=()=>{ try{ return JSON.parse(localStorage.getItem('sc_stages')||'
 const saveProg=p=>{ try{ localStorage.setItem('sc_stages',JSON.stringify(p)); }catch(e){} };
 const starStr=n=>'\u2605'.repeat(n)+'\u2606'.repeat(3-n);
 function clearFx(){ skids.length=0; smoke.length=0; chain.active=false; chain.pts=0; chain.mult=1; chain.time=0; prevWheels=null; score=0; toastEl.style.opacity=0; zmsgEl.style.opacity=0; }
-function hideOverlays(){ $('start').style.display='none'; $('result').style.display='none'; document.body.classList.remove('in-menu'); }
+function hideOverlays(){ $('start').style.display='none'; $('result').style.display='none'; document.body.classList.remove('in-menu'); setMusic(false); }
 function startStage(i){
   endSurvivalView(); resetPerf();
   hideOverlays(); loadStage(i); clearFx();
@@ -1459,7 +1476,7 @@ function showMenu(view){
   endSurvivalView();
   if(mode==='track'){ mode='city'; T=null; run=null; clearFx(); buildMini(); resetCar(); cam.x=car.x; cam.y=car.y; }
   state='menu'; pausedFrom=null; silence(); bannerEl.style.display='none'; $('result').style.display='none'; $('settings').style.display='none';
-  document.body.classList.add('in-menu');
+  document.body.classList.add('in-menu'); setMusic(true);
   renderStageGrid(); updateMenuStats(); $('start').style.display='flex';
   showView(typeof view==='string'?view:'main');
 }
@@ -1642,6 +1659,7 @@ function choosePaint(hex,name){
 choosePaint(paintHex);
 
 document.querySelector('[data-mode=stages] .ms').textContent=STAGES.length+' drift events';
+if(window.desktop) initAudio();
 resetCar(); cam.x=car.x; cam.y=car.y; buildMini(); showMenu();
 requestAnimationFrame(frame);
 })();

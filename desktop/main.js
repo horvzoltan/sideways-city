@@ -7,7 +7,7 @@ const { pathToFileURL } = require('url');
 const ROOT = path.join(__dirname, '..');
 
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },   // stream: lets <audio> play music from app://
 ]);
 
 function createWindow() {

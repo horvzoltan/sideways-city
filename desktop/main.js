@@ -16,7 +16,7 @@ function createWindow() {
     title: 'Sideways City', backgroundColor: '#2a2c30',
     icon: path.join(ROOT, 'build', 'icon.png'),
     show: false,
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true },
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, autoplayPolicy: 'no-user-gesture-required' },
   });
   win.once('ready-to-show', () => { win.maximize(); win.show(); });
   win.webContents.on('before-input-event', (e, input) => {

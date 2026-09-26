@@ -438,6 +438,34 @@ function sfxNotes(freqs,type,step,v){
     o.connect(g).connect(master); o.start(t); o.stop(t+step*2);
   });
 }
+// ---------- interface sounds: tick on move, chime on select, whoosh on start ----------
+let lastUiEl=null, uiT=0;
+function uiSound(kind){
+  if(muted) return;
+  if(!AC){ initAudio(); if(!AC) return; }
+  if(AC.state==='suspended') AC.resume();
+  const t=AC.currentTime+0.005;
+  const tone=(f0,f1,dur,type,vol,delay=0)=>{
+    const o=AC.createOscillator(), g=AC.createGain(), a=t+delay;
+    o.type=type; o.frequency.setValueAtTime(f0,a); o.frequency.exponentialRampToValueAtTime(f1,a+dur);
+    g.gain.setValueAtTime(0.0001,a); g.gain.exponentialRampToValueAtTime(vol,a+0.006); g.gain.exponentialRampToValueAtTime(0.0001,a+dur);
+    o.connect(g).connect(master); o.start(a); o.stop(a+dur+0.02);
+  };
+  if(kind==='move'){ const n=performance.now(); if(n-uiT<35) return; uiT=n; tone(2400,1900,0.045,'sine',0.05); burst(t,0.03,'highpass',5200,3000,1,0.04); }
+  else if(kind==='select'){ tone(880,1320,0.09,'triangle',0.08); tone(1320,1760,0.12,'sine',0.05,0.05); }
+  else if(kind==='back'){ tone(900,520,0.1,'triangle',0.07); }
+  else if(kind==='start'){ burst(t,0.4,'bandpass',400,4200,1.2,0.16); tone(110,50,0.28,'sine',0.25); tone(660,990,0.12,'square',0.035,0.05); tone(990,1320,0.2,'square',0.03,0.13); }
+}
+function uiMove(el){ if(el && el!==lastUiEl){ lastUiEl=el; uiSound('move'); } }
+document.addEventListener('click',e=>{   // select / back / start, for every menu button however it was pressed
+  const el=e.target.closest('button,label.swatch'); if(!el || el.closest('.touch')) return;
+  lastUiEl=el;
+  uiSound(el.matches('[data-back]')?'back':el.matches('.stage,#survive,#free,#rNext,#rRetry')?'start':'select');
+},true);
+document.addEventListener('focusin',e=>{ if(e.target.closest('.overlay')) uiMove(e.target); });
+document.addEventListener('mouseover',e=>{ const el=e.target.closest('#start button,#start label.swatch,.overlay button'); if(el && !el.disabled) uiMove(el); });
+addEventListener('pointerdown',()=>initAudio(),{once:true});   // browsers only allow audio after a first gesture
+addEventListener('keydown',()=>initAudio(),{once:true});
 const sfxBank=size=>sfxNotes(size>1500?[523,659,784,1047]:size>500?[523,659,784]:[587,784],'square',0.08,0.1);
 const sfxLost=()=>sfxNotes([330,247,185],'sawtooth',0.09,0.08);
 
@@ -1442,21 +1470,22 @@ function showView(name){
   $('start').classList.toggle('sub',name!=='main');
   const root=$(VIEWS[name]);
   const first=['.mitem.sel','.stage.sel:not(:disabled)','.mitem:not([hidden])','.stage:not(:disabled)','.swatch','.back'].map(q=>root.querySelector(q)).find(Boolean);
-  select(first);
+  select(first,true);
   if(document.body.classList.contains('pad-nav')||lastKeyNav) first?.focus({preventScroll:true});
   if(name==='garage') drawPreview();
   updateHints();
 }
-function menuBack(){ if(state==='menu' && view!=='main') showView('main'); }
+function menuBack(){ if(state==='menu' && view!=='main'){ uiSound('back'); showView('main'); } }
 let lastKeyNav=false;
 addEventListener('keydown',e=>{ if(e.key.startsWith('Arrow')||e.key==='Tab') lastKeyNav=true; });
 addEventListener('pointerdown',()=>{ lastKeyNav=false; });
-function select(el){   // highlight a menu item or stage row and show its details
+function select(el,quiet){   // highlight a menu item or stage row and show its details
   if(!el) return;
+  if(quiet) lastUiEl=el; else if(!el.classList.contains('sel')) uiMove(el);
   if(el.classList.contains('mitem')){ document.querySelectorAll('.mitem.sel').forEach(x=>x.classList.remove('sel')); el.classList.add('sel'); setInfo(el.dataset.mode); }
   if(el.classList.contains('stage')){ document.querySelectorAll('.stage.sel').forEach(x=>x.classList.remove('sel')); el.classList.add('sel'); showStageInfo(+el.dataset.i); }
 }
-$('start').addEventListener('focusin',e=>select(e.target.closest('.mitem,.stage')));
+$('start').addEventListener('focusin',e=>{ const el=e.target.closest('.mitem,.stage'); if(el) select(el); else uiMove(e.target); });
 $('start').addEventListener('mouseover',e=>{ const el=e.target.closest('.mitem,.stage'); if(el && !el.disabled && !el.classList.contains('sel')) select(el); });
 document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.go)));
 document.querySelectorAll('[data-back]').forEach(b=>b.addEventListener('click',()=>showView('main')));

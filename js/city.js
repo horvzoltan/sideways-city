@@ -4,7 +4,7 @@
 // a park, or buildings that face and follow the nearest street. Everything is derived from a hash
 // of the cell coordinates, so a cell always comes out the same and neighbours agree on shared edges.
 function createEndlessCity(o){   // o: surface ids, palettes and makePalm from game.js
-  const CH=960, RING_R=120, RING_W=86, SIDE_W=72, STEP=24, COARSE=40;
+  const CH=960, RING_R=130, RING_W=110, SIDE_W=96, STEP=24, COARSE=40;
   const cells=new Map();
 
   const hash=(i,j,k)=>{
@@ -22,7 +22,7 @@ function createEndlessCity(o){   // o: surface ids, palettes and makePalm from g
     if(k==='h'?(j===0&&(i===0||i===-1)):(i===0&&(j===0||j===-1))) return true;
     return hash(i,j,k==='h'?4:5)>0.1;
   };
-  const edgeW=(k,i,j)=>((k==='h'?j:i)%3===0)?140:108;   // every third line is a wide boulevard
+  const edgeW=(k,i,j)=>((k==='h'?j:i)%3===0)?180:146;   // every third line is a wide boulevard
   function edge(k,i,j){
     const a=node(i,j), b=k==='h'?node(i+1,j):node(i,j+1), dx=b[0]-a[0], dy=b[1]-a[1], L=Math.hypot(dx,dy);
     const strong=hash(i,j,k==='h'?8:9)<0.4, bend=(hash(i,j,k==='h'?6:7)-0.5)*CH*(strong?0.5:0.08);
@@ -78,7 +78,7 @@ function createEndlessCity(o){   // o: surface ids, palettes and makePalm from g
 
   function genCell(i,j){
     const R=rng(i,j), pick=a=>a[Math.floor(R()*a.length)];
-    const C={i,j,roads:[],parks:[],islands:[],lots:[],solids:[],scenery:[]};
+    const C={i,j,roads:[],parks:[],squares:[],islands:[],lots:[],solids:[],scenery:[]};
     const obs=[];   // everything buildings must keep clear of: {pts, w, closed}
     const addRoad=(pts,w,main,closed)=>{ C.roads.push({pts,w,main:!!main,closed:!!closed,bb:bbox(pts,w/2+4),path:toPath(pts,closed)}); };
 
@@ -100,7 +100,7 @@ function createEndlessCity(o){   // o: surface ids, palettes and makePalm from g
     const boundary=[...bezPts(E.top,COARSE),...bezPts(E.right,COARSE),...bezPts(E.bottom,COARSE).reverse(),...bezPts(E.left,COARSE).reverse()];
     const n00=node(i,j), n10=node(i+1,j), n11=node(i+1,j+1), n01=node(i,j+1);
     const ctr=[(n00[0]+n10[0]+n11[0]+n01[0])/4,(n00[1]+n10[1]+n11[1]+n01[1])/4];
-    const kind=isOrigin(i,j)?'plaza':R()<0.14?'park':'city';
+    const kr=R(), kind=isOrigin(i,j)?'square':kr<0.1?'park':kr<0.45?'square':'city';   // lots of open asphalt to fight on
     const street=(pts,w)=>{ addRoad(pts,w); obs.push({pts,w}); };
     const curve=(a,c,b)=>bezPts({a,c,b},STEP);
 
@@ -131,14 +131,15 @@ function createEndlessCity(o){   // o: surface ids, palettes and makePalm from g
     };
     const placed=[];
     if(kind==='park') C.parks.push({pts:boundary,path:toPath(boundary,true)});
+    if(kind==='square') C.squares.push({pts:boundary,path:toPath(boundary,true),x:ctr[0],y:ctr[1],r:140+R()*80});
     if(kind==='city'){   // buildings and parking lots, fronting the nearest street
       const bb=bbox(boundary,0);
-      for(let gy=bb[1]+40;gy<bb[3];gy+=90) for(let gx=bb[0]+40;gx<bb[2];gx+=90){
-        const px=gx+(R()-0.5)*50, py=gy+(R()-0.5)*50;
-        if(!inPoly(px,py,boundary)) continue;
+      for(let gy=bb[1]+60;gy<bb[3];gy+=160) for(let gx=bb[0]+60;gx<bb[2];gx+=160){
+        const px=gx+(R()-0.5)*60, py=gy+(R()-0.5)*60;
+        if(R()<0.3||!inPoly(px,py,boundary)) continue;
         const nr=clear(px,py); if(nr.c<30) continue;
-        const lot=R()<0.1, tall=!lot&&R()<0.2;
-        const fw=lot?120+R()*60:tall?100+R()*50:60+R()*70, dp=lot?80+R()*30:tall?100+R()*50:55+R()*55;   // frontage, depth
+        const lot=R()<0.4, tall=!lot&&R()<0.2;
+        const fw=lot?200+R()*120:tall?100+R()*50:60+R()*70, dp=lot?130+R()*70:tall?100+R()*50:55+R()*55;   // frontage, depth
         let nx=px-nr.x, ny=py-nr.y; const nl=Math.hypot(nx,ny)||1; nx/=nl; ny/=nl;
         const off=nr.half+16+dp/2, cx=nr.x+nx*off, cy=nr.y+ny*off, ang=Math.atan2(nr.ty,nr.tx);
         const pts=obb(cx,cy,fw/2,dp/2,ang);
@@ -166,8 +167,8 @@ function createEndlessCity(o){   // o: surface ids, palettes and makePalm from g
         for(const sgn of [1,-1]){ const x=b[0]-ty*off*sgn, y=b[1]+tx*off*sgn; if(palmOk(x,y)) C.scenery.push(o.makePalm(x,y,R)); }
       }
     }
-    if(kind!=='city'){ const bb=bbox(boundary,0);
-      for(let k=0;k<(kind==='park'?10:6);k++){ const x=bb[0]+R()*(bb[2]-bb[0]), y=bb[1]+R()*(bb[3]-bb[1]); if(palmOk(x,y)&&clear(x,y).c>30) C.scenery.push(o.makePalm(x,y,R)); } }
+    if(kind==='park'){ const bb=bbox(boundary,0);
+      for(let k=0;k<10;k++){ const x=bb[0]+R()*(bb[2]-bb[0]), y=bb[1]+R()*(bb[3]-bb[1]); if(palmOk(x,y)&&clear(x,y).c>30) C.scenery.push(o.makePalm(x,y,R)); } }
     return C;
   }
 
@@ -182,6 +183,7 @@ function createEndlessCity(o){   // o: surface ids, palettes and makePalm from g
     for(const C of near) for(const s of C.islands) if((x-s.x)**2+(y-s.y)**2<s.r*s.r) return o.GRASS;
     for(const C of near) for(const r of C.roads){ const b=r.bb; if(x<b[0]||x>b[2]||y<b[1]||y>b[3]) continue; if(lineInfo(x,y,r.pts,r.closed).d<r.w/2) return o.ROAD; }
     for(const C of near) for(const p of C.parks) if(inPoly(x,y,p.pts)) return o.GRASS;
+    for(const C of near) for(const q of C.squares) if(inPoly(x,y,q.pts)) return o.ROAD;
     for(const C of near) for(const l of C.lots) if(inPoly(x,y,l.pts)) return o.LOT;
     return o.WALK;
   }

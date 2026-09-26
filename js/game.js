@@ -828,6 +828,12 @@ function drawEndlessGround(hw,hh){
   const cells=city.cellsIn(cam.x-hw,cam.y-hh,cam.x+hw,cam.y+hh);
   ctx.fillStyle='#d6ccba'; ctx.fillRect(cam.x-hw,cam.y-hh,hw*2,hh*2);   // paving between streets
   ctx.fillStyle=COLORS[GRASS]; for(const C of cells) for(const p of C.parks) ctx.fill(p.path);
+  for(const C of cells) for(const q of C.squares){   // open asphalt squares with a painted drift circle
+    ctx.fillStyle='#45474e'; ctx.fill(q.path);
+    ctx.strokeStyle='rgba(240,236,220,.28)'; ctx.lineWidth=5; ctx.setLineDash([26,22]);
+    ctx.beginPath(); ctx.arc(q.x,q.y,q.r,0,7); ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.arc(q.x,q.y,10,0,7); ctx.fillStyle='rgba(240,236,220,.35)'; ctx.fill();
+  }
   for(const C of cells) for(const l of C.lots){
     ctx.fillStyle=COLORS[LOT]; ctx.fill(l.path);
     ctx.save(); ctx.translate(l.cx,l.cy); ctx.rotate(l.ang); ctx.fillStyle='rgba(240,236,220,.55)';
@@ -976,6 +982,7 @@ function buildRadar(ci,cj){
   c.setTransform(RADAR_S,0,0,RADAR_S,-radarO[0]*RADAR_S,-radarO[1]*RADAR_S);
   const cells=city.cellsIn(radarO[0],radarO[1],radarO[0]+n*CH,radarO[1]+n*CH);
   c.fillStyle='#5c9a45'; for(const C of cells) for(const p of C.parks) c.fill(p.path);
+  c.fillStyle='#55585e'; for(const C of cells) for(const q of C.squares) c.fill(q.path); for(const C of cells) for(const l of C.lots) c.fill(l.path);
   c.lineCap='round'; c.lineJoin='round'; c.strokeStyle='#55585e';
   for(const C of cells) for(const r of C.roads){ c.lineWidth=r.w; c.stroke(r.path); }
   for(const C of cells) for(const b of C.solids){ c.fillStyle=shade(b.col,0.75); c.beginPath(); b.pts.forEach((p,k)=>k?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1])); c.fill(); }

@@ -1,0 +1,6 @@
+build/
+build-*/
+sideways.cfg
+save.cfg
+ghosts/
+autoshot.png

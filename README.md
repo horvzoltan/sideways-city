@@ -2,6 +2,10 @@
 
 A top-down drifting game in the style of the late-90s overhead city games. Plain HTML, CSS and JavaScript: no frameworks, no build step.
 
+## Native version
+
+`native/` is the same game rewritten in C++ on raylib (the engine RECOIL uses), with its own launcher. See `native/README.md` to build it. It shares this folder's `assets/`.
+
 ## Running it
 
 The game loads its engine sound from `assets/`, so open it through a local web server rather than double-clicking `index.html` (browsers block file loading from `file://`). Any of these works from this folder:
@@ -48,6 +52,7 @@ assets/music/               music tracks
 assets/fonts/               Chakra Petch, bundled so the game works offline
 desktop/                    Electron main process and preload
 build/                      app icon (icon.svg is the source)
+native/                     the C++ / raylib version
 ```
 
 ## Where to change things

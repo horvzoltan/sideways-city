@@ -1,0 +1,39 @@
+# Sideways City stage. Plain text: "key = value" settings, then the track.
+#   width, runoff   road and run-off width (px); laps; pace (higher = less time)
+#   sky, weather    look (dawn, morning, noon, afternoon, sunset, storm, night, predawn / clear, wind, sandstorm)
+#   grip            below 1 is slippery; pass_scale scales the target score; seed places the scenery
+#   pt x y          track control points, driven in order (the road is a smooth curve through them)
+#   landmark type x y [size] [angle]   hand-placed scenery: arch, oasis, salt (a slippery flat), hoodoo, ruin, wall,
+#                                      rock, lantern, palm, balloon, flags
+
+name = Sandstorm Pass
+desc = Chicanes in a sandstorm. You will see the next corner late, so read the road.
+width = 170
+runoff = 65
+laps = 3
+pace = 255
+sky = storm
+weather = sandstorm
+grip = 1
+seed = 16
+
+pt 300 500
+pt 800 300
+pt 1300 450
+pt 1800 250
+pt 2250 450
+pt 2100 850
+pt 2350 1150
+pt 2000 1500
+pt 1500 1350
+pt 1150 1650
+pt 650 1500
+pt 450 1150
+pt 750 900
+pt 300 800
+
+landmark arch 890 1615 2.0 -1.25
+landmark hoodoo 1241 950 1.4
+landmark hoodoo 1641 850 1.2
+landmark hoodoo 941 1250 1.0
+landmark hoodoo 1941 1150 0.9

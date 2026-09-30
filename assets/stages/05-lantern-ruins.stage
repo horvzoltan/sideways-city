@@ -1,0 +1,47 @@
+# Sideways City stage. Plain text: "key = value" settings, then the track.
+#   width, runoff   road and run-off width (px); laps; pace (higher = less time)
+#   sky, weather    look (dawn, morning, noon, afternoon, sunset, storm, night, predawn / clear, wind, sandstorm)
+#   grip            below 1 is slippery; pass_scale scales the target score; seed places the scenery
+#   pt x y          track control points, driven in order (the road is a smooth curve through them)
+#   landmark type x y [size] [angle]   hand-placed scenery: arch, oasis, salt (a slippery flat), hoodoo, ruin, wall,
+#                                      rock, lantern, palm, balloon, flags
+
+name = Lantern Ruins
+desc = Hairpin after hairpin between the old temple walls as the sun goes down.
+width = 165
+runoff = 60
+laps = 3
+pace = 278
+sky = sunset
+weather = clear
+grip = 1
+seed = 15
+
+pt 300 300
+pt 1300 250
+pt 1600 450
+pt 1300 650
+pt 700 650
+pt 540 900
+pt 700 1150
+pt 1400 1150
+pt 1700 950
+pt 2000 650
+pt 2300 850
+pt 2050 1200
+pt 2300 1550
+pt 1900 1750
+pt 1100 1650
+pt 500 1700
+pt 170 1450
+
+landmark arch 616 191 1.93 1.51
+landmark wall 1754 1396 1.2 0.5
+landmark ruin 1690 1330 1.0
+landmark ruin 1820 1460 1.1
+landmark wall 504 1396 1.0 -0.3
+landmark ruin 560 1350 1.0
+landmark ruin 554 446 0.9
+landmark ruin 1354 1396 0.8
+landmark lantern 1700 1420
+landmark lantern 530 1420

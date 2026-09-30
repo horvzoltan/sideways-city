@@ -1,4 +1,4 @@
-// draw.h - the 2D vector drawing the web version got from Canvas2D, on top of rlgl:
+// draw.h - Canvas-style 2D vector drawing on top of rlgl:
 // filled shapes, thick polylines with round joins, dashes, radial gradients and skewed text.
 #pragma once
 #include "raylib.h"
@@ -34,6 +34,7 @@ void FillCircle(float x, float y, float r, Color c);
 void FillEllipse(float x, float y, float rx, float ry, float rot, Color c);
 void FillSector(float x, float y, float r, float a0, float a1, Color c);
 void FillRoundRect(float x, float y, float w, float h, float r, Color c);
+void StrokeRoundRect(float x, float y, float w, float h, float r, float width, Color c);
 void StrokeCircle(float x, float y, float r, float width, Color c);
 void StrokeArc(float x, float y, float r, float a0, float a1, float width, Color c);
 void DashedCircle(float x, float y, float r, float width, float dash, float gap, Color c);
@@ -51,7 +52,7 @@ void RadialGradient(float x, float y, float r0, float r1, Color c0, Color c1, fl
 void QuadTo(std::vector<Vector2>& out, Vector2 p0, Vector2 c, Vector2 p1, int segs = 8);
 }  // namespace draw
 
-// ---- text: Chakra Petch, the web version's font ----
+// ---- text: Chakra Petch ----
 enum FontWeight { W500, W700 };
 bool LoadFonts();
 void UnloadFonts();

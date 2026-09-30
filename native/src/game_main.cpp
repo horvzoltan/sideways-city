@@ -21,24 +21,27 @@ int main(int argc, char** argv) {
     SetTraceLogLevel(LOG_WARNING);
     InitWindow(cfg.GetInt("width", 1280), cfg.GetInt("height", 720), "Sideways City");
     SetWindowMinSize(800, 500);
+    if (FileExists("assets/icon.png")) { Image icon = LoadImage("assets/icon.png"); SetWindowIcon(icon); UnloadImage(icon); }
     if (cfg.GetBool("fullscreen", false)) ToggleBorderlessWindowed();
     SetExitKey(KEY_NULL);   // Esc pauses and goes back in menus
     SetTargetFPS(std::max(0, cfg.GetInt("fps_max", 144)));
     rlDisableBackfaceCulling();   // 2D shapes are wound both ways
     if (!LoadFonts()) TraceLog(LOG_WARNING, "Fonts not found in assets/fonts, using the raylib default");
 
+    std::string stageError;
+    if (!LoadStages("assets/stages", &stageError)) TraceLog(LOG_WARNING, "Stages: %s", stageError.c_str());
+
     Game game;
     game.Init(true);
 
     // Developer helpers for screenshots and checks:
-    //   +debug_start stage:N | survive | free | garage | stages | controls   jump straight to a screen
+    //   +debug_start stage:N | free | garage | stages | controls   jump straight to a screen
     //   +debug_gas X  +debug_steer X  +debug_hand 1                           hold these inputs
     //   +debug_autoshot N                                                     save autoshot.png after N frames and quit
-    //   +debug_pause 1  +debug_levelup 1  +debug_result 1                     open an overlay once the run is going
+    //   +debug_pause 1                                                       open the pause menu once the run is going
     const std::string start = cfg.Get("debug_start", "");
     if (start.rfind("stage:", 0) == 0) game.StartStage(std::clamp(std::atoi(start.c_str() + 6), 0, (int)STAGES.size() - 1));
-    else if (start == "survive") game.StartSurvival();
-    else if (start == "free") game.StartCity();
+    else if (start == "free") game.StartFree();
     else if (start == "garage") game.view = V_GARAGE;
     else if (start == "stages") game.view = V_STAGES;
     else if (start == "controls") game.view = V_CONTROLS;
@@ -47,19 +50,18 @@ int main(int argc, char** argv) {
     game.debugHand = cfg.GetBool("debug_hand", false);
     game.debugNoFocusPause = !start.empty() || cfg.GetBool("debug_nofocuspause", false);
     const int autoShot = cfg.GetInt("debug_autoshot", 0);
-    const bool dbgPause = cfg.GetBool("debug_pause", false), dbgLevel = cfg.GetBool("debug_levelup", false), dbgResult = cfg.GetBool("debug_result", false);
-    const int dbgSkip = cfg.GetInt("debug_skip", 0);   // seconds of survival to skip ahead
-    if (dbgSkip && game.surv) game.surv->t = dbgSkip;
+    if (cfg.values.count("debug_day")) game.desert.SetDay(cfg.GetFloat("debug_day", 0.2));   // +debug_day 0..1: free roam's time
+    if (cfg.values.count("debug_x")) {   // +debug_x X +debug_y Y: park the car (and camera) there, for screenshots
+        game.car.x = game.cam.x = cfg.GetFloat("debug_x", 0);
+        game.car.y = game.cam.y = cfg.GetFloat("debug_y", 0);
+    }
+    const bool dbgPause = cfg.GetBool("debug_pause", false);
 
     int frame = 0;
     while (!WindowShouldClose() && !game.WantsQuit()) {
         game.Frame(GetFrameTime());
         frame++;
-        if (autoShot && frame == autoShot * 2 / 3) {
-            if (dbgPause) game.Pause();
-            if (dbgLevel && game.surv) { game.surv->xp = game.surv->next; }
-            if (dbgResult && game.surv) game.SurvEnd(true);
-        }
+        if (autoShot && frame == autoShot * 2 / 3 && dbgPause) game.Pause();
         if (autoShot && frame == autoShot) { TakeScreenshot("autoshot.png"); break; }
     }
 

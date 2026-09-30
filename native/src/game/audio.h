@@ -1,4 +1,4 @@
-// audio.h - everything the web version did with Web Audio, as a small mixer on raylib's audio
+// audio.h - the game's sound, as a small mixer on raylib's audio
 // stream callback: the engine (granular playback of a real Supra dyno recording), tyre squeal,
 // the blow-off valve and pops, crash and interface sounds, and the menu music.
 #pragma once
@@ -16,10 +16,12 @@ enum UiKind { UI_MOVE, UI_SELECT, UI_BACK, UI_START };
 class Audio {
 public:
     bool Init(int volume, bool muted);
+    bool LoadEngine();       // decodes the engine recording (Init does this; also usable without a sound device)
     void Shutdown();
     void Update(float dt, bool focused);   // music fades and streaming; call once a frame
 
     // ---- engine: call UpdateEngine every frame while driving ----
+    // speed is the car's speed as a share of its top speed times 640, so tuned cars rev the same.
     void UpdateEngine(float dt, float speed, float slip, bool softSurface, float throttle);
     void ResetEngine() { es = EngineState{}; }
     void Silence();          // engine and tyres fade out (pause, menus)
@@ -46,7 +48,11 @@ public:
     void Render(float* out, unsigned frames);
 
 private:
-    struct EngineState { float rpm = 1100; int gear = 0; float cut = 0, boost = 0, load = 0, limT = 0; bool prevThr = false; };
+    struct EngineState {
+        float rpm = 1100; int gear = 0;
+        float shiftT = 0, shiftDur = 0, shiftFrom = 0; bool up = false;   // a gear change in progress
+        float boost = 0, load = 0, limT = 0; bool prevThr = false;
+    };
     EngineState es;
     struct Param { float v = 0, target = 0, tau = 0.03f; };
     struct Osc {
@@ -58,7 +64,8 @@ private:
         uint64_t start; FilterType type; float f0, f1, dur, q, vol;
         float x1 = 0, x2 = 0, y1 = 0, y2 = 0, b0 = 0, b1 = 0, b2 = 0, a1 = 0, a2 = 0;
     };
-    struct Grain { uint64_t start; int layer; double pos, step; float age = 0; };
+    struct Grain { uint64_t start; int layer; double pos, step; float rec; uint32_t id; float age = 0; };   // rec: pitch of the recording where it plays
+    struct LastGrain { bool valid = false; uint32_t id = 0; uint64_t start = 0; double pos = 0, step = 1; };   // per layer, for aligning the next one
     struct Shared {   // written by the game, read by the audio thread
         float master = 0, layerOn = 0, layerOff = 0, bus = 1, skidGain = 0, skidFreq = 1500;
         float layerTau = 0.03f, skidTau = 0.05f;
@@ -89,10 +96,12 @@ private:
 
     // audio thread only
     Shared cur;
-    Param pMaster, pOn, pOff, pBus, pSkidG, pSkidF;
+    Param pMaster, pOn, pOff, pBus, pSkidG, pSkidF, pHz;
+    uint32_t grainId = 0;
     std::vector<Osc> oscs;
     std::vector<Noise> noises;
     std::vector<Grain> grains;
+    LastGrain lastGrain[2];
     std::vector<float> engine;   // the recording, mono
     int engineRate = 48000;
     double nextGrain = 0;

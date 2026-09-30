@@ -1,39 +1,95 @@
 #include "tracks.h"
 #include <algorithm>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 
-const std::vector<StageDef> STAGES = {
-    {"Practice Bowl", "Wide and forgiving. Learn to link the corners.", 230, 120, 2, 270, "grass", false,
-     {{500,500},{2300,500},{2750,900},{2700,1500},{2250,1800},{1500,1700},{1150,2050},{1250,2550},{750,2750},{380,2250},{350,1200}}},
-    {"Container Port", "Two long hairpins between the stacks. Keep the rear out.", 200, 90, 2, 290, "port", false,
-     {{400,400},{2600,400},{2850,720},{2550,1000},{1150,1020},{880,1270},{1150,1520},{2550,1540},{2850,1850},{2550,2170},{1150,2200},{700,2500},{380,2150}}},
-    {"Mountain Touge", "Narrow road, short run-off, trees everywhere. One mistake costs the zone.", 175, 60, 2, 300, "forest", false,
-     {{500,300},{1500,380},{2500,300},{2850,650},{2450,1020},{1650,920},{1200,1250},{1700,1600},{2600,1520},{2950,1950},{2550,2450},{1650,2330},{950,2650},{420,2250},{720,1650},{300,1100}}},
-    {"Crossover", "A figure eight under the lights. Watch the crossing.", 185, 75, 2, 310, "stadium", true, {}},
-    {"Snake Canyon", "Endless direction changes. Transitions decide everything.", 155, 50, 2, 320, "desert", false,
-     {{450,520},{950,300},{1450,620},{1950,300},{2450,620},{2950,420},{3150,950},{2800,1420},{3150,1920},{2850,2450},{2300,2750},{1800,2420},{1300,2750},{800,2420},{380,2620},{230,2000},{560,1500},{230,1020}}},
-    {"Devil's Knot", "Night run. Tight, twisted and unforgiving. Only the best finish.", 138, 38, 2, 330, "night", false,
-     {{500,420},{1700,420},{2050,720},{1750,1040},{1250,960},{950,1250},{1250,1550},{2200,1430},{2600,930},{3050,1200},{2950,2000},{2450,2250},{2150,1930},{1700,2250},{2000,2750},{1300,2850},{700,2550},{900,2020},{420,1720},{300,1000}}},
-    {"Ocean Drive", "Fast sweepers between the sand and the palms. Carry your speed.", 170, 90, 2, 300, "beach", false,
-     {{400,500},{1600,420},{2800,560},{3200,1000},{2900,1500},{2200,1450},{1700,1800},{2100,2300},{2900,2400},{3100,2800},{2500,3150},{1300,3050},{700,2700},{900,2100},{500,1600},{300,1000}}},
-    {"Frozen Lake", "Wide loops on sheet ice. Less grip everywhere, so start the slide early.", 200, 110, 2, 260, "snow", false,
-     {{500,600},{2000,500},{2800,900},{2700,1500},{2000,1600},{1500,1300},{900,1500},{1100,2100},{2000,2200},{2800,2500},{2500,3000},{1200,3000},{500,2500},{300,1500}}},
-    {"Harbour Hairpins", "Five hairpins stacked between the containers. Flick it early and hold the angle.", 170, 70, 2, 300, "port", false,
-     {{400,400},{2700,400},{3000,650},{2700,900},{900,900},{650,1150},{900,1400},{2700,1400},{3000,1650},{2700,1900},{900,1900},{650,2150},{900,2400},{2700,2400},{3050,2750},{2600,3050},{600,3000},{250,2500},{250,900}}},
-    {"Neon Downtown", "Square city corners under the neon. Tight walls and no run-off to speak of.", 160, 50, 2, 310, "neon", false,
-     {{500,500},{1500,500},{1700,700},{1700,1200},{1900,1400},{2600,1400},{2800,1600},{2800,2400},{2600,2600},{1900,2600},{1700,2400},{1700,2000},{1500,1800},{800,1800},{600,2000},{600,2600},{400,2800},{250,2600},{250,700}}},
-    {"Canyon Run", "A long, fast run with snaking sections at both ends. Commit or lose the zone.", 150, 50, 2, 340, "desert", false,
-     {{500,400},{1500,300},{2500,450},{3300,300},{3700,700},{3400,1200},{3700,1700},{3300,2200},{2500,2000},{1800,2300},{1200,2000},{600,2300},{300,1800},{700,1300},{300,800}}},
-    {"Midnight Pass", "The narrowest, twistiest road of all, in the dark. The final test.", 135, 36, 2, 350, "night", false,
-     {{500,400},{1400,350},{1800,650},{1500,1000},{1900,1300},{2600,1100},{3000,1400},{2800,1900},{2200,1800},{1800,2200},{2300,2600},{1800,3000},{1000,2900},{600,2500},{1000,2000},{700,1500},{300,1200},{350,700}}},
-};
+std::vector<StageDef> STAGES;
 
-static Pts EightPts() {
-    Pts p;
-    for (int i = 0; i < 16; i++) {
-        double t = i / 16.0 * PI * 2;
-        p.push_back({1750 + 1400 * std::cos(t), 1450 + 1150 * std::sin(t) * std::cos(t)});
+namespace {
+std::string Trim(const std::string& s) {
+    size_t a = s.find_first_not_of(" \t\r\n"), b = s.find_last_not_of(" \t\r\n");
+    return a == std::string::npos ? "" : s.substr(a, b - a + 1);
+}
+uint32_t Fnv1a(const std::string& s) {
+    uint32_t h = 2166136261u;
+    for (unsigned char c : s) { h ^= c; h *= 16777619u; }
+    return h;
+}
+}  // namespace
+
+bool ParseStage(const std::string& text, const std::string& id, StageDef& d, std::string* error) {
+    d = StageDef{};
+    d.id = id;
+    d.fingerprint = Fnv1a(text);
+    std::istringstream in(text);
+    std::string line;
+    int n = 0;
+    auto fail = [&](const std::string& why) { if (error) *error = id + ".stage line " + std::to_string(n) + ": " + why; return false; };
+    while (std::getline(in, line)) {
+        n++;
+        line = Trim(line.substr(0, line.find('#')));
+        if (line.empty()) continue;
+        const size_t eq = line.find('=');
+        if (eq != std::string::npos) {
+            const std::string k = Trim(line.substr(0, eq)), v = Trim(line.substr(eq + 1));
+            const double num = std::atof(v.c_str());
+            if (k == "name") d.name = v;
+            else if (k == "desc") d.desc = v;
+            else if (k == "width") d.w = num;
+            else if (k == "runoff") d.r = num;
+            else if (k == "laps") d.laps = std::max(1, (int)num);
+            else if (k == "pace") d.v = num;
+            else if (k == "sky") d.sky = v;
+            else if (k == "weather") d.weather = v;
+            else if (k == "grip") d.grip = num;
+            else if (k == "pass_scale") d.passScale = num;
+            else if (k == "seed") d.seed = (int)num;
+            else return fail("unknown setting '" + k + "'");
+            continue;
+        }
+        std::istringstream ls(line);
+        std::string word;
+        ls >> word;
+        if (word == "pt") {
+            V2 p;
+            if (!(ls >> p.x >> p.y)) return fail("pt needs x and y");
+            d.pts.push_back(p);
+        } else if (word == "landmark") {
+            Landmark m;
+            if (!(ls >> m.type >> m.x >> m.y)) return fail("landmark needs a type, x and y");
+            static const char* types[] = {"arch", "oasis", "salt", "hoodoo", "ruin", "wall", "rock", "lantern", "palm", "balloon", "flags"};
+            if (std::none_of(std::begin(types), std::end(types), [&](const char* t) { return m.type == t; })) return fail("unknown landmark '" + m.type + "'");
+            ls >> m.size >> m.angle;
+            d.landmarks.push_back(m);
+        } else return fail("unknown line '" + word + "'");
     }
-    return p;
+    if (d.name.empty()) return fail("missing name");
+    if (d.pts.size() < 4) return fail("a track needs at least 4 points");
+    if (d.w <= 0 || d.v <= 0) return fail("width and pace must be positive");
+    return true;
+}
+
+bool LoadStages(const std::string& dir, std::string* error) {
+    namespace fs = std::filesystem;
+    std::vector<fs::path> files;
+    std::error_code ec;
+    for (const auto& e : fs::directory_iterator(dir, ec))
+        if (e.is_regular_file() && e.path().extension() == ".stage") files.push_back(e.path());
+    if (ec) { if (error) *error = "cannot read " + dir; return false; }
+    std::sort(files.begin(), files.end());
+    std::vector<StageDef> out;
+    for (const auto& f : files) {
+        std::ifstream in(f, std::ios::binary);
+        std::stringstream ss;
+        ss << in.rdbuf();
+        StageDef d;
+        if (!ParseStage(ss.str(), f.stem().string(), d, error)) return false;
+        out.push_back(std::move(d));
+    }
+    STAGES = std::move(out);
+    return true;
 }
 
 template <class T> static std::vector<T> Rot(const std::vector<T>& a, int off) {
@@ -43,7 +99,7 @@ template <class T> static std::vector<T> Rot(const std::vector<T>& a, int off) {
 }
 
 Track BuildTrack(const StageDef& def) {
-    const Pts P = def.eight ? EightPts() : def.pts;
+    const Pts& P = def.pts;
     const int n = (int)P.size();
     Pts out;
     for (int i = 0; i < n; i++) {   // closed Catmull-Rom spline
@@ -104,14 +160,6 @@ Track BuildTrack(const StageDef& def) {
         } else run = 0;
     }
     int off = ((bestMid % N) + N) % N;
-    if (def.eight) {
-        int c = 0; double cd = 1e9;
-        for (int i = 0; i < N; i++) {
-            double d = Hypot(pts[i].x - 1750, pts[i].y - 1450);
-            if (d < cd) { cd = d; c = i; }
-        }
-        off = (int)((c + JsRound(N * 0.09)) % N);
-    }
     Track T;
     T.def = &def; T.N = N; T.L = L;
     T.pts = Rot(pts, off); T.tan = Rot(tan, off); T.k = Rot(ks, off);
@@ -130,9 +178,9 @@ Track BuildTrack(const StageDef& def) {
     }
     std::vector<std::pair<int, int>> padded, merged;
     for (auto z : zones)
-        if ((z.second - z.first) * 18 > def.w * 1.1) padded.push_back({std::max(8, z.first - 7), std::min(N - 9, z.second + 5)});
+        if ((z.second - z.first) * 18 > def.w * 1.1) padded.push_back({std::max(8, z.first - 4), std::min(N - 9, z.second + 3)});
     for (auto z : padded) {
-        if (!merged.empty() && z.first - merged.back().second < 10) merged.back().second = z.second;
+        if (!merged.empty() && z.first - merged.back().second < 4) merged.back().second = z.second;   // corners closer than ~70 px share a zone
         else merged.push_back(z);
     }
     for (auto [a, b] : merged) {
@@ -169,7 +217,7 @@ void StageGoals(Track& T, int i) {
     const StageDef& def = *T.def;
     double per = 0;
     for (const Zone& z : T.zones) per += z.len * 0.12 + 250 + z.clips.size() * 150;
-    T.pass = (int)(JsRound(per * def.laps * (1 + std::min(i, 8) * 0.06) / 100) * 100);
+    T.pass = (int)(JsRound(per * def.laps * (1 + std::min(i, 8) * 0.06) * def.passScale / 100) * 100);
     T.limit = (int)JsRound(def.laps * T.L / def.v);
     T.clipR = std::max(30, 52 - i * 3);
 }

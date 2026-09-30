@@ -28,21 +28,22 @@ else()
   add_compile_options(-Wall -Wno-missing-field-initializers)
 endif()
 
-# Track and city generation: no raylib, shared by the game and the tests.
+# World generation and the car handling: no raylib, shared by the game and the tests.
 set(WORLD_SRC
   src/game/tracks.cpp
-  src/game/city.cpp
-  src/game/miami.cpp
-  src/game/world.cpp)
+  src/game/desert.cpp
+  src/game/world.cpp
+  src/game/car.cpp
+  src/game/terrain.cpp)
 
 # ---- the game ----
 add_executable(sideways
   ${WORLD_SRC}
   src/common/config.cpp
   src/game/draw.cpp
+  src/game/desert_scene.cpp
   src/game/audio.cpp
   src/game/game.cpp
-  src/game/survival.cpp
   src/game/render.cpp
   src/game/ui.cpp
   src/game/menus.cpp
@@ -75,8 +76,7 @@ if(UNIX AND NOT APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   target_link_options(sideways_launcher PRIVATE -static-libstdc++ -static-libgcc)
 endif()
 
-# Put both executables and the assets next to each other. The assets are shared with the
-# web version, in the repository's top-level assets/ folder.
+# Put both executables and the assets (the repository's top-level assets/ folder) next to each other.
 foreach(t sideways sideways_launcher)
   set_target_properties(${t} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
@@ -86,17 +86,19 @@ endforeach()
 set(ASSETS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../assets)
 add_custom_command(TARGET sideways POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:sideways>/assets/fonts $<TARGET_FILE_DIR:sideways>/assets/music
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ASSETS_DIR}/supra-engine.mp3 $<TARGET_FILE_DIR:sideways>/assets/
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ASSETS_DIR}/supra-engine.mp3 ${ASSETS_DIR}/icon.png $<TARGET_FILE_DIR:sideways>/assets/
   COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ASSETS_DIR}/music/menu-liquid-flame.mp3 $<TARGET_FILE_DIR:sideways>/assets/music/
+  COMMAND ${CMAKE_COMMAND} -E copy_directory ${ASSETS_DIR}/stages $<TARGET_FILE_DIR:sideways>/assets/stages
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
     ${ASSETS_DIR}/fonts/chakra-petch-latin-500-normal.ttf ${ASSETS_DIR}/fonts/chakra-petch-latin-700-normal.ttf
     ${ASSETS_DIR}/fonts/OFL.txt $<TARGET_FILE_DIR:sideways>/assets/fonts/)
 
-# ---- headless checks: the C++ port against numbers taken from the JavaScript version ----
+# ---- headless checks: stages, the Miami map and the car handling ----
 option(SIDEWAYS_BUILD_TESTS "Build sideways_tests" ON)
 if(SIDEWAYS_BUILD_TESTS)
-  add_executable(sideways_tests ${WORLD_SRC} tests/port_test.cpp)
+  add_executable(sideways_tests ${WORLD_SRC} tests/world_test.cpp)
   target_include_directories(sideways_tests PRIVATE src)
+  target_compile_definitions(sideways_tests PRIVATE STAGES_DIR="${ASSETS_DIR}/stages")
   set_target_properties(sideways_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/bin)
   if(MINGW)

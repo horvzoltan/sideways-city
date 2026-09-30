@@ -1,0 +1,40 @@
+# Sideways City stage. Plain text: "key = value" settings, then the track.
+#   width, runoff   road and run-off width (px); laps; pace (higher = less time)
+#   sky, weather    look (dawn, morning, noon, afternoon, sunset, storm, night, predawn / clear, wind, sandstorm)
+#   grip            below 1 is slippery; pass_scale scales the target score; seed places the scenery
+#   pt x y          track control points, driven in order (the road is a smooth curve through them)
+#   landmark type x y [size] [angle]   hand-placed scenery: arch, oasis, salt (a slippery flat), hoodoo, ruin, wall,
+#                                      rock, lantern, palm, balloon, flags
+
+name = Wind Terraces
+desc = Switchbacks stacked down the terraced dunes. Keep the car sideways from one to the next.
+width = 190
+runoff = 75
+laps = 3
+pace = 231
+sky = morning
+weather = wind
+grip = 1
+seed = 12
+
+pt 300 300
+pt 1200 250
+pt 1700 300
+pt 2100 200
+pt 2350 500
+pt 1900 700
+pt 2300 950
+pt 1850 1150
+pt 2250 1450
+pt 1800 1650
+pt 1100 1550
+pt 650 1700
+pt 250 1400
+pt 500 1050
+pt 200 700
+
+landmark flags 1253 924 1.2 0.3
+landmark flags 903 724 1.0 -0.5
+landmark flags 903 1174 1.0 0.8
+landmark rock 1503 1274 1.3
+landmark balloon 1253 924 1.0

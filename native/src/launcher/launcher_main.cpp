@@ -62,6 +62,7 @@ int main() {
     SetTraceLogLevel(LOG_WARNING);
     InitWindow(760, 460, "Sideways City Launcher");
     SetTargetFPS(60);
+    if (FileExists("assets/icon.png")) { Image icon = LoadImage("assets/icon.png"); SetWindowIcon(icon); UnloadImage(icon); }
     Font font = FileExists("assets/fonts/chakra-petch-latin-700-normal.ttf") ? LoadFontEx("assets/fonts/chakra-petch-latin-700-normal.ttf", 64, nullptr, 0) : GetFontDefault();
     SetTextureFilter(font.texture, TEXTURE_FILTER_BILINEAR);
 

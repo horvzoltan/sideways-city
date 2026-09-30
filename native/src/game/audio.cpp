@@ -12,8 +12,12 @@ Audio* g_audio = nullptr;
 const float ENG_ON[][2] = {{1.971f,101},{2.071f,103},{2.171f,105},{2.271f,110},{2.371f,119},{2.471f,121},{2.571f,122},{2.871f,130},{2.971f,131},{3.071f,133},{3.171f,140},{3.271f,152},{3.371f,153},{3.471f,159},{11.371f,163},{11.471f,163},{11.571f,163},{11.671f,163},{11.771f,163},{11.871f,163},{11.971f,163},{12.071f,163},{12.171f,163},{12.271f,163},{12.371f,164},{12.471f,164},{12.571f,164},{12.671f,165},{12.771f,165},{12.871f,165},{12.971f,165},{13.071f,165},{13.171f,166},{13.271f,166},{13.371f,167},{13.471f,167},{13.571f,167},{13.671f,167},{13.771f,168},{13.871f,168},{13.971f,168},{14.071f,169},{14.171f,169},{14.271f,169},{14.371f,170},{14.471f,170},{14.571f,170},{14.671f,171},{14.771f,171},{14.871f,171},{14.971f,172},{15.071f,172},{15.171f,172},{15.271f,172},{15.371f,172},{15.471f,173},{15.571f,174},{15.671f,174},{15.771f,174},{15.871f,174},{15.971f,174},{16.071f,175},{16.171f,175},{16.271f,175},{16.371f,175},{16.471f,175},{16.571f,176},{16.671f,176},{16.771f,177},{16.871f,177},{16.971f,177},{17.071f,177},{17.171f,177},{17.271f,178},{17.371f,178},{17.471f,178},{17.571f,178},{17.671f,178},{17.771f,179},{17.871f,180},{17.971f,180},{18.071f,180},{18.171f,180},{18.271f,181},{18.371f,181},{18.471f,182},{18.571f,183},{18.671f,184},{18.771f,184},{18.871f,185},{18.971f,185},{19.071f,187},{19.171f,187},{19.271f,188},{19.371f,189},{19.471f,191},{19.571f,193},{19.671f,195},{19.771f,195},{19.871f,198},{19.971f,199},{20.071f,201},{20.171f,204},{20.271f,206},{20.371f,208},{20.471f,209},{20.571f,212},{20.671f,214},{20.771f,215},{20.871f,217},{20.971f,218},{21.071f,224},{21.171f,224},{21.271f,229},{21.371f,231},{21.471f,234},{21.571f,237},{21.671f,239},{21.771f,245},{21.871f,246},{21.971f,250},{22.071f,251},{22.171f,257},{22.271f,261},{22.371f,267},{22.471f,269},{22.571f,279},{22.671f,281},{22.771f,285},{22.971f,308},{23.071f,308},{23.171f,317},{23.271f,318},{23.371f,326},{23.471f,329},{23.571f,339},{23.671f,341},{23.771f,349},{23.871f,352},{23.971f,356},{24.071f,362},{24.171f,371},{24.271f,372},{24.371f,375},{24.471f,381},{24.571f,387},{24.671f,390},{24.771f,395}};
 const float ENG_OFF[][2] = {{26.271f,301},{26.371f,299},{26.471f,297},{26.571f,285},{26.671f,267},{26.771f,264},{26.871f,250},{26.971f,246},{27.071f,246},{27.171f,226},{27.271f,217},{27.371f,202},{27.471f,202},{27.571f,192},{28.171f,144},{28.271f,141},{28.471f,131},{28.571f,121},{28.671f,113},{28.771f,108},{28.871f,107},{28.971f,93},{29.071f,93},{29.171f,93},{29.271f,90},{29.371f,89},{29.471f,87},{29.571f,87},{29.671f,86},{29.771f,85},{29.871f,85},{29.971f,81},{30.071f,80},{30.171f,80},{30.271f,78},{30.371f,78},{30.471f,78},{30.571f,78},{30.671f,76},{30.771f,75},{30.871f,72},{30.971f,72},{31.071f,72}};
 const float IDLE_SPAN[2] = {31.75f, 33.4f}, IDLE_F = 65;   // a stretch of steady idle near the end of the clip
-constexpr float GRAIN = 0.11f, HOP = GRAIN / 3;
-const float GEAR_TOP[6] = {150, 245, 340, 440, 545, 660};
+// Grains overlap by half: two sin^2 windows at 50% always sum to 1, so the level stays flat.
+constexpr float GRAIN = 0.11f, HOP = GRAIN / 2;
+// Four gears: the car reaches top speed in about two seconds, so six made it shift every quarter second.
+constexpr int GEARS = 4;
+const float GEAR_TOP[GEARS] = {190, 330, 480, 700};
+constexpr float SHIFT_UP_RPM = 6450, UPSHIFT_TIME = 0.14f, DOWNSHIFT_TIME = 0.12f;
 constexpr float IDLE = 1100, REDLINE = 7000;
 constexpr float MUSIC_LEVEL = 0.45f;
 
@@ -46,6 +50,26 @@ bool Audio::Init(int volume, bool m) {
     InitAudioDevice();
     ok = IsAudioDeviceReady();
     if (!ok) return false;
+    LoadEngine();
+    if (engine.empty()) TraceLog(LOG_WARNING, "Engine sound could not load: assets/supra-engine.mp3");
+    SetAudioStreamBufferSizeDefault(1024);
+    stream = LoadAudioStream(RATE, 32, 1);
+    SetAudioStreamCallback(stream, Callback);
+    PlayAudioStream(stream);
+    // menu music streams from disk: "Liquid Flame" by Of Far Different Nature (CC0)
+    if (FileExists("assets/music/menu-liquid-flame.mp3")) {
+        music = LoadMusicStream("assets/music/menu-liquid-flame.mp3");
+        musicOk = music.frameCount > 0;
+        if (musicOk) { music.looping = true; SetMusicVolume(music, 0); }
+    }
+    std::lock_guard<std::mutex> lk(this->m);
+    shared.master = MasterLevel();
+    pMaster.v = pMaster.target = shared.master;
+    return true;
+}
+
+bool Audio::LoadEngine() {
+    if (!engine.empty()) return true;
     // the engine recording, decoded once to mono floats
     if (FileExists("assets/supra-engine.mp3")) {
         Wave w = LoadWave("assets/supra-engine.mp3");
@@ -62,21 +86,7 @@ bool Audio::Init(int volume, bool m) {
         }
         UnloadWave(w);
     }
-    if (engine.empty()) TraceLog(LOG_WARNING, "Engine sound could not load: assets/supra-engine.mp3");
-    SetAudioStreamBufferSizeDefault(1024);
-    stream = LoadAudioStream(RATE, 32, 1);
-    SetAudioStreamCallback(stream, Callback);
-    PlayAudioStream(stream);
-    // menu music streams from disk: "Liquid Flame" by Of Far Different Nature (CC0)
-    if (FileExists("assets/music/menu-liquid-flame.mp3")) {
-        music = LoadMusicStream("assets/music/menu-liquid-flame.mp3");
-        musicOk = music.frameCount > 0;
-        if (musicOk) { music.looping = true; SetMusicVolume(music, 0); }
-    }
-    std::lock_guard<std::mutex> lk(this->m);
-    shared.master = MasterLevel();
-    pMaster.v = pMaster.target = shared.master;
-    return true;
+    return !engine.empty();
 }
 
 void Audio::Shutdown() {
@@ -107,7 +117,7 @@ void Audio::SetMusic(bool on) { musicOn = on; }
 void Audio::Update(float dt, bool focused) {
     if (!ok) return;
     uiT -= dt;
-    {   // the browser suspended all sound when the window lost focus
+    {   // no sound while the window is in the background
         std::lock_guard<std::mutex> lk(m);
         shared.master = focused ? MasterLevel() : 0;
     }
@@ -125,19 +135,35 @@ void Audio::Update(float dt, bool focused) {
 
 // ---------- engine ----------
 void Audio::UpdateEngine(float dt, float s, float slip, bool soft, float throttle) {
-    float thr = throttle;
-    if (es.cut > 0) { es.cut -= dt; thr = 0; }
+    const float thr = throttle;
     const bool on = thr > 0.15f;
-    float wr = s / GEAR_TOP[es.gear] * REDLINE;
-    if (wr > 6750 && es.gear < 5 && throttle > 0.15f) { es.gear++; es.cut = 0.16f; if (Frand() < 0.6f) Crackle(); }
-    else if (es.gear > 0 && wr < 2600 && s / GEAR_TOP[es.gear - 1] * REDLINE < 6000) es.gear--;
+    float wr = s / GEAR_TOP[es.gear] * REDLINE;   // what the wheels turn the engine at in this gear
+    // Gear changes: up when the revs you hear reach the top of the gear, down when the wheels would
+    // lug the engine. A shift is short: clutch in, the revs fall (or rise) to the new gear, clutch out.
+    if (es.shiftT > 0) es.shiftT -= dt;
+    else if (on && es.gear < GEARS - 1 && es.rpm > SHIFT_UP_RPM && wr > SHIFT_UP_RPM) {
+        es.gear++; es.up = true; es.shiftT = es.shiftDur = UPSHIFT_TIME; es.shiftFrom = es.rpm;
+        if (Frand() < 0.25f) Crackle();
+    } else if (es.gear > 0 && wr < 2600 && s / GEAR_TOP[es.gear - 1] * REDLINE < 6000) {
+        es.gear--; es.up = false; es.shiftT = es.shiftDur = DOWNSHIFT_TIME; es.shiftFrom = es.rpm;
+    }
     wr = s / GEAR_TOP[es.gear] * REDLINE;
     float target = std::max(IDLE, wr);
     if (on && s < 60) target = std::max(target, IDLE + (4300 - IDLE) * thr);
     if (on && slip > 150) target += 1000 * std::min(1.0f, (slip - 150) / 200);
     target = std::min(LIMIT, target);
-    es.rpm += (target - es.rpm) * std::min(1.0f, (target > es.rpm ? 9 : 5) * dt);
-    es.load += (thr - es.load) * std::min(1.0f, 10 * dt);
+    if (es.shiftT > 0) {
+        // the revs settle in the first 70% of the shift, fast at first and easing in
+        const float u = std::min(1.0f, (1 - es.shiftT / es.shiftDur) / 0.7f), e = 1 - (1 - u) * (1 - u) * (1 - u);
+        es.rpm = es.shiftFrom + (target - es.shiftFrom) * e;
+        // off the gas while the clutch is in, but not all the way, so the engine keeps its voice;
+        // a small blip of throttle on the way down
+        const float loadTarget = es.up ? thr * 0.3f : std::max(thr, 0.45f);
+        es.load += (loadTarget - es.load) * std::min(1.0f, 30 * dt);
+    } else {
+        es.rpm += (target - es.rpm) * std::min(1.0f, (target > es.rpm ? 14 : 6) * dt);
+        es.load += (thr - es.load) * std::min(1.0f, (thr > es.load ? 16 : 10) * dt);
+    }
 
     float lim = 1;
     if (on && es.rpm > 6950) { es.limT += dt; lim = ((int)std::floor(es.limT * 24) % 2) ? 0.3f : 1; }
@@ -190,13 +216,55 @@ void Audio::Lookup(bool off, float hz, double& pos, float& rec) {
     pos = tab[best][0]; rec = tab[best][1];
 }
 
+// Cubic (Catmull-Rom) read between samples, for grains played faster or slower than recorded.
+static float ReadAt(const std::vector<float>& e, double pos) {
+    const long i = (long)pos, n = (long)e.size();
+    if (i < 1 || i + 2 >= n) return i >= 0 && i < n ? e[i] : 0;
+    const float t = (float)(pos - i), a = e[i - 1], b = e[i], c = e[i + 1], d = e[i + 2];
+    return b + 0.5f * t * (c - a + t * (2 * a - 5 * b + 4 * c - d + t * (3 * (b - c) + d - a)));
+}
+
 void Audio::SpawnGrain(int layer, uint64_t at, float hz) {
     double pos; float rec;
     if (layer == 1 && hz < 70) { pos = IDLE_SPAN[0] + Frand() * (IDLE_SPAN[1] - IDLE_SPAN[0]); rec = IDLE_F; }
     else Lookup(layer == 1, hz, pos, rec);
-    float rate = std::clamp(hz / rec, 0.5f, 2.0f);
-    double startSec = std::max(0.0, pos - GRAIN * rate / 2 + (Frand() - .5) * 0.02);
-    grains.push_back({at, layer, startSec * engineRate, (double)rate * engineRate / RATE, 0});
+    const float rate = std::clamp(hz / rec, 0.5f, 2.0f);
+    const double step = (double)rate * engineRate / RATE;
+    double start = std::max(0.0, pos - GRAIN * rate / 2 + (Frand() - .5) * 0.008) * engineRate;
+    // Line the new grain up with the one already playing (WSOLA): within one engine cycle of the
+    // wanted spot, pick the start whose waveform matches what the previous grain is playing at that
+    // moment. Overlapping grains then add up in phase instead of smearing into a phasey mess.
+    LastGrain& lg = lastGrain[layer];
+    if (lg.valid && at >= lg.start && !engine.empty()) {
+        const double prev = lg.pos + (double)(at - lg.start) * lg.step;
+        const int L = 384, span = (int)std::min(engineRate / std::max(rec, 40.0f), 0.012f * engineRate);
+        auto match = [&](double c, int stride) {
+            double ab = 0, aa = 1e-9, bb = 1e-9;
+            for (int k = 0; k < L; k += stride) {
+                const float x = ReadAt(engine, c + k * step), y = ReadAt(engine, prev + k * lg.step);
+                ab += x * y; aa += x * x; bb += y * y;
+            }
+            return ab / std::sqrt(aa * bb);
+        };
+        double best = start, bestScore = -2;
+        for (int d = -span; d <= span; d += 2) {   // coarse search, then refine around the best
+            const double c = start + d;
+            if (c < 1) continue;
+            const double sc = match(c, 2);
+            if (sc > bestScore) { bestScore = sc; best = c; }
+        }
+        const double coarse = best;
+        for (int d = -1; d <= 1; d++) {
+            const double c = coarse + d;
+            if (c < 1) continue;
+            const double sc = match(c, 1);
+            if (d == -1 || sc > bestScore) { bestScore = sc; best = c; }
+        }
+        start = best;
+    }
+    const uint32_t id = ++grainId;
+    lg = {true, id, at, start, step};
+    grains.push_back({at, layer, start, step, rec, id, 0});
 }
 
 // ---------- one-shots ----------
@@ -278,21 +346,25 @@ void Audio::Render(float* out, unsigned frames) {
     pBus.target = cur.bus; pBus.tau = 0.01f;
     pSkidG.target = cur.skidGain; pSkidG.tau = cur.skidTau;
     pSkidF.target = cur.skidFreq; pSkidF.tau = 0.03f;
+    pHz.target = cur.hz; pHz.tau = 0.012f;
+    if (pHz.v <= 0) pHz.v = pHz.target;
 
     // engine grains: short overlapping slices of the recording, scheduled ahead
+    if (!cur.grains) lastGrain[0].valid = lastGrain[1].valid = false;
     if (cur.grains) {
         double now = (double)t0 / RATE;
         if (nextGrain < now) nextGrain = now + 0.01;
         while (nextGrain < now + (double)frames / RATE + 0.02) {
             uint64_t at = (uint64_t)(nextGrain * RATE);
-            if (cur.load > 0.01f) SpawnGrain(0, at, cur.hz);
-            if (1 - cur.load > 0.01f) SpawnGrain(1, at, cur.hz);
+            if (cur.load > 0.01f) SpawnGrain(0, at, cur.hz); else lastGrain[0].valid = false;
+            if (1 - cur.load > 0.01f) SpawnGrain(1, at, cur.hz); else lastGrain[1].valid = false;
             nextGrain += HOP;
         }
     }
 
     const float kMaster = Smooth(pMaster.tau), kOn = Smooth(pOn.tau), kOff = Smooth(pOff.tau), kBus = Smooth(pBus.tau);
-    const float kSkG = Smooth(pSkidG.tau), kSkF = Smooth(pSkidF.tau);
+    const float kSkG = Smooth(pSkidG.tau), kSkF = Smooth(pSkidF.tau), kHz = Smooth(pHz.tau);
+    const double rateScale = (double)engineRate / RATE;
     const int grainLen = (int)(GRAIN * RATE);
     // compressor: threshold -16 dB, ratio 4, 30 dB knee, 3 ms attack, 250 ms release, like Web Audio's defaults
     const float atk = 1 - std::exp(-1.0f / (0.003f * RATE)), rel = 1 - std::exp(-1.0f / (0.25f * RATE));
@@ -307,6 +379,7 @@ void Audio::Render(float* out, unsigned frames) {
         pBus.v += (pBus.target - pBus.v) * kBus;
         pSkidG.v += (pSkidG.target - pSkidG.v) * kSkG;
         pSkidF.v += (pSkidF.target - pSkidF.v) * kSkF;
+        pHz.v += (pHz.target - pHz.v) * kHz;
 
         float comp = 0, direct = 0, layer[2] = {0, 0};
         // grains
@@ -314,16 +387,17 @@ void Audio::Render(float* out, unsigned frames) {
             if (now < g.start) continue;
             float u = g.age / grainLen;
             if (u < 1 && !engine.empty()) {
-                size_t k = (size_t)g.pos;
-                float fr = (float)(g.pos - k);
-                float s = k + 1 < engine.size() ? engine[k] + (engine[k + 1] - engine[k]) * fr : 0;
-                float win = std::sin(PI_F * u);
-                layer[g.layer] += s * win * win / 1.5f;
+                const float win = std::sin(PI_F * u);
+                layer[g.layer] += ReadAt(engine, g.pos) * win * win;
             }
+            // every grain follows the engine's pitch as it changes, so revs glide instead of stepping
+            g.step = std::clamp(pHz.v / g.rec, 0.5f, 2.0f) * rateScale;
             g.pos += g.step;
             g.age += 1;
+            LastGrain& lg = lastGrain[g.layer];
+            if (lg.id == g.id) { lg.start = now + 1; lg.pos = g.pos; lg.step = g.step; }
         }
-        comp += (layer[0] * pOn.v + layer[1] * pOff.v) * pBus.v;
+        comp += (layer[0] * pOn.v + layer[1] * pOff.v) * pBus.v * 0.8f;   // aligned grains add up in phase, so trim to the old level
 
         // tyres: looping noise through a narrow bandpass
         if ((i & 15) == 0) Biquad(BANDPASS, pSkidF.v, 7, sb0, sb1, sb2, sa1, sa2);

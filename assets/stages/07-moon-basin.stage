@@ -1,0 +1,43 @@
+# Sideways City stage. Plain text: "key = value" settings, then the track.
+#   width, runoff   road and run-off width (px); laps; pace (higher = less time)
+#   sky, weather    look (dawn, morning, noon, afternoon, sunset, storm, night, predawn / clear, wind, sandstorm)
+#   grip            below 1 is slippery; pass_scale scales the target score; seed places the scenery
+#   pt x y          track control points, driven in order (the road is a smooth curve through them)
+#   landmark type x y [size] [angle]   hand-placed scenery: arch, oasis, salt (a slippery flat), hoodoo, ruin, wall,
+#                                      rock, lantern, palm, balloon, flags
+
+name = Moon Basin
+desc = A technical run by moonlight and lantern glow. Short straights, no rest.
+width = 160
+runoff = 55
+laps = 3
+pace = 255
+sky = night
+weather = clear
+grip = 1
+seed = 17
+
+pt 400 300
+pt 1100 350
+pt 1350 600
+pt 1100 850
+pt 1500 1000
+pt 1850 750
+pt 2200 900
+pt 2100 1300
+pt 1700 1450
+pt 1850 1750
+pt 1200 1800
+pt 900 1500
+pt 550 1650
+pt 250 1300
+pt 550 1000
+pt 250 650
+
+landmark oasis 1307 1394 0.75
+landmark wall 757 644 1.0 0.3
+landmark ruin 700 600 1.0
+landmark lantern 907 1144
+landmark lantern 960 1100
+landmark lantern 860 1190
+landmark ruin 1907 1044 0.9

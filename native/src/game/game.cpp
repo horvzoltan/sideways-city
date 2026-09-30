@@ -1,4 +1,5 @@
 #include "game.h"
+#include "terrain.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -6,22 +7,12 @@
 #include <fstream>
 #include <map>
 
-const Color INK = Hex(0xf3ead2), CYAN = Hex(0x2fd6ff), MUTED = Hex(0xb9b09a), ACCENT_C = Hex(0xffcf3a), BAD = Hex(0xff6a55);
+// The interface palette: warm cream text, pale sand and sun-gold accents, soft coral for bad news.
+const Color INK = Hex(0xfbf4ea), SAND_C = Hex(0xf1d3a1), MUTED = Hex(0xe6d6c2), ACCENT_C = Hex(0xf4b56a), BAD = Hex(0xe9806e), GOOD = Hex(0xa9d18e);
 
 namespace {
-const std::map<std::string, Theme> THEMES = {
-    {"grass",   {0x4d6a3b, 0xa39a7c, 0x3b3e44, 0xeeeae0, 0xc8352b, {SC_TREE}, {0x3f5a30, 0x476836, 0x35502b}}},
-    {"port",    {0x77756e, 0x8f8b80, 0x3a3c41, 0xeeeae0, 0x2f6fb5, {SC_BLOCK}, {0xb5452f, 0x2f6b8f, 0xc9922c, 0x4d7d44, 0x8c8f93}, 0.7}},
-    {"forest",  {0x2f4a2a, 0x8a8266, 0x383a3f, 0xeeeae0, 0xc8352b, {SC_TREE}, {0x27401f, 0x2e4b25, 0x223a1c, 0x355a2c}, 2.2}},
-    {"stadium", {0x5d6068, 0x8a8a86, 0x34363b, 0xeeeae0, 0xd9a21b, {SC_TIRES, SC_BLOCK}, {0x7a3b3b, 0x3b5a7a, 0x6b6f78}}},
-    {"desert",  {0xb48a5c, 0xc9a574, 0x46433f, 0xeeeae0, 0xc8352b, {SC_ROCK}, {0x8f6a45, 0xa07a50, 0x7d5c3c}}},
-    {"night",   {0x1c2a1f, 0x5b574a, 0x2c2e33, 0xd8d4ca, 0xb3302a, {SC_TREE}, {0x15241a, 0x1a2d1f, 0x203626}, 1.6, true}},
-    {"beach",   {0xe9d7a6, 0xd6bf88, 0x3d3f46, 0xf1ede4, 0x2bb5b0, {SC_PALM}, FRONDS, 0.7}},
-    {"snow",    {0xe4ebf0, 0xc7d1da, 0x56606c, 0xf4f6f8, 0x2f6fb5, {SC_TREE}, {0x2c4a3c, 0x35574a, 0x23402f}, 1.3, false, 0.72}},   // grip: ice
-    {"neon",    {0x15131f, 0x2a2838, 0x24232e, 0xff3fa4, 0x2fd6ff, {SC_BLOCK}, {0x3a2f5c, 0x23365e, 0x512a4f, 0x2b2b3d}, 0.9, true}},
-};
 const double GRIP[7] = {1, 0.9, 0.55, 1, 0.5, 0.5, 0.5};   // by Surface
-bool Soft(int s) { return s == GRASS || s == GRAVEL || s == SAND; }
+bool Soft(int s) { return s == GRASS || s == GRAVEL || s == SAND || s == WATER; }
 constexpr size_t MAX_SKIDS = 3000;
 constexpr double GHOST_DT = 0.05;
 double Frand() { return (double)std::rand() / ((double)RAND_MAX + 1); }
@@ -62,34 +53,36 @@ bool Game::Init(bool quitButton) {
     customPaint = std::none_of(std::begin(PAINTS), std::end(PAINTS), [&](const PaintPreset& q) { return q.hex == paintHex; });
     Vector3 hsv = ColorToHSV(Hex(paintHex));
     customH = hsv.x; customS = hsv.y; customV = hsv.z;
-    miami.Generate();
     miniBg = LoadRenderTexture(280, 280);
     miniOk = miniBg.id != 0;
-    ResetCar();
+    car = {0, 0, -PI / 2, 0, 0, 0};
     cam.x = car.x; cam.y = car.y;
-    BuildMini();
     ShowMenu();
     return true;
 }
 
 void Game::Shutdown() {
     if (miniOk) UnloadRenderTexture(miniBg);
-    if (radarBg.id) UnloadRenderTexture(radarBg);
+    desert.Unload();
     audio.Shutdown();
 }
 
 Game::StageProg Game::Prog(int i) const {
-    return {save.GetInt("stage" + std::to_string(i) + "_best", 0), save.GetInt("stage" + std::to_string(i) + "_stars", 0)};
+    const std::string k = "stage." + STAGES[i].id;   // saved by stage name, so reordering stages keeps progress
+    return {save.GetInt(k + ".best", 0), save.GetInt(k + ".stars", 0)};
 }
-static std::string GhostPath(int i) { return "ghosts/stage_" + std::to_string(i) + ".ghost"; }
-bool Game::GhostExists(int i) const { return FileExists(GhostPath(i).c_str()); }
+// Ghost file: magic, the stage file's fingerprint, score, sample count, then the samples.
+// A ghost recorded on a different version of the stage is ignored.
+constexpr int32_t GHOST_MAGIC = 0x32534847;   // "GHS2"
+static std::string GhostPath(int i) { return "ghosts/" + STAGES[i].id + ".ghost"; }
+bool Game::GhostExists(int i) const { Ghost g; return LoadGhost(i, g); }
 bool Game::LoadGhost(int i, Ghost& g) const {
     std::ifstream f(GhostPath(i), std::ios::binary);
-    int32_t hdr[2];
-    if (!f.read((char*)hdr, sizeof hdr) || hdr[1] < 0 || hdr[1] > 10000000) return false;
-    std::vector<int32_t> d(hdr[1]);
+    int32_t hdr[4];
+    if (!f.read((char*)hdr, sizeof hdr) || hdr[0] != GHOST_MAGIC || (uint32_t)hdr[1] != STAGES[i].fingerprint || hdr[3] < 0 || hdr[3] > 10000000) return false;
+    std::vector<int32_t> d(hdr[3]);
     if (!f.read((char*)d.data(), d.size() * sizeof(int32_t))) return false;
-    g.score = hdr[0];
+    g.score = hdr[2];
     g.d.assign(d.begin(), d.end());
     return true;
 }
@@ -97,7 +90,7 @@ bool Game::SaveGhost(int i, const Ghost& g) const {
     std::error_code ec;
     std::filesystem::create_directories("ghosts", ec);
     std::ofstream f(GhostPath(i), std::ios::binary);
-    int32_t hdr[2] = {g.score, (int32_t)g.d.size()};
+    int32_t hdr[4] = {GHOST_MAGIC, (int32_t)STAGES[i].fingerprint, g.score, (int32_t)g.d.size()};
     std::vector<int32_t> d(g.d.begin(), g.d.end());
     return f.write((char*)hdr, sizeof hdr) && f.write((char*)d.data(), d.size() * sizeof(int32_t));
 }
@@ -123,10 +116,7 @@ Game::Nearest Game::NearestOn(double x, double y, int i0, int i1) const {
     return {bi, best, px, py};
 }
 
-int Game::SurfAt(double x, double y) {
-    if (mode == MODE_CITY) return TileAt(x, y);
-    return NearestAll(x, y).d < T->half + 7 ? ROAD : GRAVEL;
-}
+int Game::SurfAt(double x, double y) { return NearestAll(x, y).d < T->half + 7 ? ROAD : GRAVEL; }
 
 bool Game::CollideCircle(double cx, double cy, double r, Hit& h) {
     if (mode == MODE_TRACK) {
@@ -136,15 +126,8 @@ bool Game::CollideCircle(double cx, double cy, double r, Hit& h) {
         h = {(n.px - cx) / d, (n.py - cy) / d, n.d + r - T->edge};
         return true;
     }
-    bool hit = false;
-    ForSolidsNear(cx, cy, r, [&](const Solid& b) { hit = CircleHit(b, cx, cy, r, h); return hit; });
-    if (!hit && !endless) {
-        const double WW = Miami::WORLD_W, WH = Miami::WORLD_H;
-        if (cx < r) { h = {1, 0, r - cx}; hit = true; }
-        else if (cx > WW - r) { h = {-1, 0, cx - (WW - r)}; hit = true; }
-        else if (cy < r) { h = {0, 1, r - cy}; hit = true; }
-        else if (cy > WH - r) { h = {0, -1, cy - (WH - r)}; hit = true; }
-    }
+    bool hit = false;   // free roam: lakes, rocks, ruins and arch legs; the desert itself never ends
+    world.ForSolidsNear(cx, cy, r, [&](const Solid& b) { hit = CircleHit(b, cx, cy, r, h); return hit; });
     return hit;
 }
 
@@ -160,12 +143,14 @@ void Game::ResetCar() {
         int i = run ? run->pi : 3;
         V2 p = T->pts[i], t = T->tan[i];
         car = {p.x, p.y, std::atan2(t.y, t.x), 0, 0, 0};
-    } else if (endless) {
-        RoadSpot s = city.NearestRoad(car.x, car.y);
-        car = {s.x, s.y, s.a, 0, 0, 0};
-    } else {
-        const double B = Miami::BLOCK * Miami::TILE;
-        car = {3 * B + Miami::TILE, 3 * B + Miami::TILE * 5, -PI / 2, 0, 0, 0};
+    } else {   // free roam: stop where you are, nudged clear of anything solid and out of the water
+        const double a = car.a;
+        V2 spot{car.x, car.y};
+        Hit h;
+        auto clear = [&](V2 p) { return world.GroundAt(p.x, p.y).water == 0 && !CollideCircle(p.x + std::cos(a) * 13, p.y + std::sin(a) * 13, 30, h) && !CollideCircle(p.x - std::cos(a) * 13, p.y - std::sin(a) * 13, 30, h); };
+        for (double rr = 0; rr <= 600 && !clear(spot); rr += 40)
+            for (int k = 0; k < 12; k++) { spot = {car.x + std::cos(k * PI / 6) * rr, car.y + std::sin(k * PI / 6) * rr}; if (clear(spot)) break; }
+        car = {spot.x, spot.y, a, 0, 0, 0};
     }
     hasPrevWheels = false;
 }
@@ -182,7 +167,7 @@ void Game::Bank() {
         if (p > 1500) audio.Notes({523, 659, 784, 1047}, SQUARE, 0.08f, 0.1f);
         else if (p > 500) audio.Notes({523, 659, 784}, SQUARE, 0.08f, 0.1f);
         else audio.Notes({587, 784}, SQUARE, 0.08f, 0.1f);
-        if (mode == MODE_CITY && p > best) { best = (int)p; save.SetInt("best", best); Save(); }
+        if (mode == MODE_FREE && p > best) { best = (int)p; save.SetInt("best", best); Save(); }
     }
     chain.active = false; chain.pts = 0; chain.time = 0; chain.mult = 1;
 }
@@ -244,7 +229,7 @@ void Game::TrackTick(double dt, bool drifting, int surf) {
                 run->clipHit[zi][c] = true;
                 int pts = 150 * chain.mult;
                 chain.pts += pts;
-                Msg("Clip  +" + std::to_string(pts), Hex(0x7fe08a));
+                Msg("Clip  +" + std::to_string(pts), GOOD);
                 audio.Notes({988, 1319}, SQUARE, 0.06f, 0.09f);
             }
         }
@@ -258,31 +243,29 @@ void Game::TrackTick(double dt, bool drifting, int surf) {
 
 // ---------- update ----------
 double Game::Update(double dt) {
-    const double fx = std::cos(car.a), fy = std::sin(car.a), rx = -fy, ry = fx;
-    double vf = car.vx * fx + car.vy * fy, vr = car.vx * rx + car.vy * ry;
-    const int surf = SurfAt(car.x, car.y);
-    const double g = GRIP[surf] * ((mode == MODE_TRACK && theme->grip) ? theme->grip : 1);
-
+    int surf;
+    double g, drag;
+    const double wasWater = water;
+    water = 0;
+    if (mode == MODE_TRACK) {
+        surf = SurfAt(car.x, car.y);
+        g = GRIP[surf] * T->def->grip * SaltGrip(*T->def, car.x, car.y);
+        drag = Soft(surf) ? 1.2 : 0.0;
+    } else {   // free roam: packed sand, soft dune crests, salt and rock
+        const Ground gr = world.GroundAt(car.x, car.y);
+        surf = gr.water > 0 ? WATER : gr.soft ? SAND : ROAD;
+        g = gr.grip; drag = gr.drag; water = gr.water;
+        world.Evict(car.x, car.y);
+    }
     const double thr = ThrottleIn(), brk = BrakeIn();
-    if (thr) vf += (vf < 0 ? 1100 : 540 * perf.acc) * thr * dt * (0.6 + 0.4 * g);
-    if (brk) vf -= (vf > 20 ? 950 : 320) * brk * dt;
-    vf = std::max(-220.0, std::min(640 * perf.top, vf));
-    vf -= vf * (0.5 + (Soft(surf) ? 1.2 : 0)) * dt;
-    if (keys.hand) vf -= Sign(vf) * std::min(std::fabs(vf), 170 * dt);
-    if (!thr && !brk && std::fabs(vf) < 8) vf = 0;
+    CarInput in;
+    in.throttle = thr; in.brake = brk; in.steer = SteerInput(); in.handbrake = HandbrakeIn();
+    in.digitalSteer = keys.left || keys.right;
+    StepCar(car, in, CarSurface{g, drag}, 1, 1, dt, handling);   // car.cpp: the handling model
 
-    double grip = keys.hand ? 1.0 : (vf > 260 ? 7.5 - 4.5 * thr : 7.5);   // more throttle, looser rear
-    grip *= g;
-    vr *= std::exp(-grip * dt);
-
+    const double fx = std::cos(car.a), fy = std::sin(car.a);
+    const double vf = car.vx * fx + car.vy * fy, vr = -car.vx * fy + car.vy * fx;
     const double speed = Hypot(vf, vr);
-    const double steer = SteerInput();
-    const double target = steer * 2.8 * std::min(1.0, std::fabs(vf) / 150) * (vf >= 0 ? 1 : -1) * (keys.hand ? 1.4 : 1);
-    car.w += (target - car.w) * std::min(1.0, 9 * dt);
-    car.a += car.w * dt;
-
-    car.vx = fx * vf + rx * vr; car.vy = fy * vf + ry * vr;
-    car.x += car.vx * dt; car.y += car.vy * dt;
 
     // collisions: two circles along the body
     for (double off : {13.0, -13.0}) {
@@ -313,7 +296,7 @@ double Game::Update(double dt) {
     if (mode == MODE_TRACK && state == ST_RACE) TrackTick(dt, drifting, surf);
 
     // skids and smoke
-    const bool skidding = std::fabs(vr) > 110 || (keys.hand && speed > 90) || (thr > 0.7 && std::fabs(vf) < 120 && std::fabs(vf) > 5 && !Soft(surf));
+    const bool skidding = std::fabs(vr) > 110 || (HandbrakeIn() > 0.5 && speed > 90) || (thr > 0.7 && std::fabs(vf) < 120 && std::fabs(vf) > 5 && !Soft(surf));
     const double nfx = std::cos(car.a), nfy = std::sin(car.a);
     const double bx = car.x - nfx * 14, by = car.y - nfy * 14;
     const V2 wl{bx - nfy * 9, by + nfx * 9}, wr{bx + nfy * 9, by - nfx * 9};
@@ -327,14 +310,37 @@ double Game::Update(double dt) {
         if (Frand() < 0.6) {
             double sx = (Frand() < .5 ? wl : wr).x, sy = (Frand() < .5 ? wl : wr).y;
             double svx = (Frand() - .5) * 30, svy = (Frand() - .5) * 30;
-            smoke.push_back({sx, sy, svx, svy, (6 + Frand() * 6) * perf.smoke, 1});
+            smoke.push_back({sx, sy, svx, svy, 6 + Frand() * 6, 1});
         }
     } else hasPrevWheels = false;
-    for (auto& s : smoke) { s.life -= dt * 1.4 / perf.smokeLife; s.r += dt * 22 * perf.smoke; s.x += s.vx * dt; s.y += s.vy * dt; }
+    // wading: a splash on the way in, spray off the wheels and rings spreading behind
+    if (water > 0) {
+        if (wasWater == 0 && speed > 120) {
+            audio.Burst(0, 0.5f, LOWPASS, 2600, 500, 0.8f, (float)std::min(1.0, speed / 400) * 0.6f);
+            for (int k = 0; k < 18; k++) {
+                const double a = Frand() * 2 * PI, v = 40 + Frand() * speed * 0.35;
+                smoke.push_back({car.x + std::cos(a) * 14, car.y + std::sin(a) * 14, car.vx * 0.3 + std::cos(a) * v, car.vy * 0.3 + std::sin(a) * v, 4 + Frand() * 5, 1, 1});
+            }
+        }
+        const double churn = std::min(1.0, (speed + std::fabs(vr)) / 350);
+        if (Frand() < churn * 0.9)
+            for (const V2& w : {wl, wr}) {
+                const double side = (&w == &wl) ? 1 : -1, v = 30 + Frand() * 60 * churn;
+                smoke.push_back({w.x, w.y, -nfy * side * v - car.vx * 0.15, nfx * side * v - car.vy * 0.15, 3 + Frand() * 4, 0.8, 1});
+            }
+        wakeT -= dt;
+        if (wakeT <= 0 && speed > 30) { wakeT = 0.12; smoke.push_back({bx, by, 0, 0, 10, 1, 2}); }
+    }
+    for (auto& s : smoke) {
+        if (s.kind == 2) { s.life -= dt * 0.7; s.r += dt * 45; continue; }   // a ring widening on the water
+        s.life -= dt * (s.kind ? 2.2 : 1.4); s.r += dt * (s.kind ? 8 : 22); s.x += s.vx * dt; s.y += s.vy * dt;
+        if (s.kind) { s.vx *= 1 - 3 * dt; s.vy *= 1 - 3 * dt; }
+    }
     smoke.erase(std::remove_if(smoke.begin(), smoke.end(), [](const SmokePuff& s) { return s.life <= 0; }), smoke.end());
 
     shake = std::max(0.0, shake - dt * 30);
-    audio.UpdateEngine((float)dt, (float)std::fabs(vf), (float)(std::fabs(vr) + (keys.hand && speed > 90 ? 120 : 0)), Soft(surf), (float)thr);
+    // the engine's gearing is laid out for 640 px/s, so scale the car's speed to that
+    audio.UpdateEngine((float)dt, (float)(std::fabs(vf) * 640 / handling.topSpeed), (float)(std::fabs(vr) + (speed > 90 ? 120 * HandbrakeIn() : 0)), Soft(surf), (float)thr);
     return speed;
 }
 
@@ -363,40 +369,13 @@ V2 Game::GhostAt(double t, double& a, bool& ok) const {
 }
 
 // ---------- stages ----------
-Scen Game::MakeDeco(double x, double y) {
-    const ScenKind kind = Pick(theme->deco, rnd());
-    const uint32_t col = Pick(theme->cols, rnd());
-    Scen d;
-    d.t = kind; d.x = d.cx = x; d.y = d.cy = y; d.col = col;
-    if (kind == SC_BLOCK) {
-        bool horiz = rnd() < 0.5;
-        d.w = horiz ? 130 : 52; d.h = horiz ? 52 : 130;
-        d.x = x - d.w / 2; d.y = y - d.h / 2;
-        d.ht = 0.05 + rnd() * 0.09;
-        d.vents = 0; d.s = rnd(); d.clear = 110;
-    } else if (kind == SC_ROCK) { d.r = 18 + rnd() * 34; d.ht = 0.03 + rnd() * 0.03; d.clear = 70; }
-    else if (kind == SC_TIRES) { d.r = 15; d.ht = 0.05; d.clear = 40; }
-    else if (kind == SC_PALM) { d = MakePalm(x, y, rnd); d.clear = 60; }
-    else { d.r = 24 + rnd() * 24; d.ht = 0.05 + rnd() * 0.06; d.clear = 60; }
-    return d;
-}
 
 void Game::LoadStage(int i) {
     const StageDef& def = STAGES[i];
     mode = MODE_TRACK;
     T = std::make_unique<Track>(BuildTrack(def));
-    theme = &THEMES.at(def.theme);
     StageGoals(*T, i);
-    rnd.seed = 4242 + i * 977;
-    decos.clear();
-    const double x0 = T->bounds[0], y0 = T->bounds[1], x1 = T->bounds[2], y1 = T->bounds[3], m = 500;
-    const long long count = JsRound((x1 - x0 + 2 * m) * (y1 - y0 + 2 * m) / 60000 * theme->dense);
-    for (long long k = 0; k < count; k++) {
-        double x = x0 - m + rnd() * (x1 - x0 + 2 * m);
-        double y = y0 - m + rnd() * (y1 - y0 + 2 * m);
-        Scen d = MakeDeco(x, y);
-        if (NearestAll(x, y).d > T->edge + d.clear) decos.push_back(d);
-    }
+    desert.Load(*T, def);   // bakes the dunes and places the scenery for the stage's time of day
     BuildMini();
 }
 
@@ -410,8 +389,6 @@ void Game::ClearFx() {
 void Game::HideOverlays() { resultOn = false; audio.SetMusic(false); }
 
 void Game::StartStage(int i) {
-    EndSurvivalView();
-    perf = {1, 1, 1, 1};
     HideOverlays();
     LoadStage(i);
     ClearFx();
@@ -431,25 +408,25 @@ void Game::StartStage(int i) {
     bannerOn = true;
 }
 
-void Game::StartCity() {
-    EndSurvivalView();
-    perf = {1, 1, 1, 1};
+void Game::StartFree() {
     HideOverlays();
-    mode = MODE_CITY; T.reset(); run.reset();
+    mode = MODE_FREE; T.reset(); run.reset();
     ClearFx();
-    BuildMini();
-    ResetCar();
+    desert.LoadFree(false);
+    car = {0, 0, -PI / 2, 0, 0, 0};   // the start of the desert is always clear
+    hasPrevWheels = false;
     cam.x = car.x; cam.y = car.y;
     state = ST_FREE; bannerOn = false;
 }
 
 void Game::ShowMenu(View v) {
-    EndSurvivalView();
     if (mode == MODE_TRACK) {
-        mode = MODE_CITY; T.reset(); run.reset();
-        ClearFx(); BuildMini(); ResetCar();
+        mode = MODE_FREE; T.reset(); run.reset();
+        ClearFx();
+        car = {0, 0, -PI / 2, 0, 0, 0};
         cam.x = car.x; cam.y = car.y;
     }
+    desert.LoadFree(true);   // the menu cruises the desert at dusk
     state = ST_MENU; audio.Silence();
     bannerOn = false; resultOn = false;
     audio.SetMusic(true);
@@ -461,14 +438,15 @@ void Game::Finish(bool completed) {
     if (chain.active) Bank();
     state = ST_DONE; audio.Silence();
     const int i = run->i, pass = T->pass;
+    const StageDef& def = STAGES[i];
     const int stars = !completed ? 0 : score >= pass * 2 ? 3 : score >= pass * 1.45 ? 2 : score >= pass ? 1 : 0;
     StageProg old = Prog(i);
     StageProg now{std::max(old.best, stars ? score : 0), std::max(old.stars, stars)};
-    save.SetInt("stage" + std::to_string(i) + "_best", now.best);
-    save.SetInt("stage" + std::to_string(i) + "_stars", now.stars);
+    save.SetInt("stage." + def.id + ".best", now.best);
+    save.SetInt("stage." + def.id + ".stars", now.stars);
     Save();
     rTitle = !completed ? "Out of time" : stars ? "Stage clear" : "Not enough points";
-    rGood = stars > 0; rStars = stars; rStarsShown = true; rSurv = false;
+    rGood = stars > 0; rStars = stars;
     rScore = "Score " + FmtNum(score) + " of " + FmtNum(pass) + " needed. Two stars at " + FmtNum(JsRound(pass * 1.45)) + ", three at " + FmtNum(pass * 2) + ".";
     std::string ghostMsg;
     if (completed && score > 0 && (!run->hasGhost || score > run->ghost.score)) {
@@ -507,7 +485,7 @@ void Game::ChoosePaint(uint32_t hex) {
 // ---------- input ----------
 void Game::PollPad(float dt) {
     const int gp = 0;
-    if (!IsGamepadAvailable(gp)) { padSteer = padThr = padBrk = 0; padHand = false; ui.SetPadNav(0, false, false); return; }
+    if (!IsGamepadAvailable(gp)) { padSteer = padThr = padBrk = padHand = 0; ui.SetPadNav(0, false, false); return; }
     auto btn = [&](int b) { return IsGamepadButtonDown(gp, b); };
     // triggers rest at -1; some drivers read 0 until first touched, so wait until we have seen the rest position
     auto pedal = [&](int axis, int k) {
@@ -519,8 +497,9 @@ void Game::PollPad(float dt) {
     };
     const float ax = GetGamepadAxisMovement(gp, GAMEPAD_AXIS_LEFT_X), ay = GetGamepadAxisMovement(gp, GAMEPAD_AXIS_LEFT_Y);
     padThr = pedal(GAMEPAD_AXIS_RIGHT_TRIGGER, 1);
+    // R2 gas and L2 brake are analog, like pedals; X (A on Xbox) or R1 is the handbrake
     padBrk = pedal(GAMEPAD_AXIS_LEFT_TRIGGER, 0);
-    padHand = btn(GAMEPAD_BUTTON_RIGHT_FACE_DOWN) || btn(GAMEPAD_BUTTON_RIGHT_TRIGGER_1);
+    padHand = btn(GAMEPAD_BUTTON_RIGHT_FACE_DOWN) || btn(GAMEPAD_BUTTON_RIGHT_TRIGGER_1) ? 1.0f : 0.0f;
     const bool dl = btn(GAMEPAD_BUTTON_LEFT_FACE_LEFT), dr = btn(GAMEPAD_BUTTON_LEFT_FACE_RIGHT);
     const float steer = dl ? -1 : dr ? 1 : ax, a = std::fabs(steer), dz = 0.15f;
     padSteer = a < dz ? 0 : (float)(Sign(steer) * std::pow((a - dz) / (1 - dz), 1.4));
@@ -529,7 +508,7 @@ void Game::PollPad(float dt) {
     const bool bStart = btn(GAMEPAD_BUTTON_MIDDLE_RIGHT);
     int nav = btn(GAMEPAD_BUTTON_LEFT_FACE_UP) || ay < -0.6f ? 1 : btn(GAMEPAD_BUTTON_LEFT_FACE_DOWN) || ay > 0.6f ? 2 : dl || ax < -0.6f ? 3 : dr || ax > 0.6f ? 4 : 0;
     const bool aP = bA && !padPrev.a, bP = bB && !padPrev.b, yP = bY && !padPrev.y, sP = bStart && !padPrev.start;
-    const bool menu = state == ST_MENU || state == ST_PAUSE || state == ST_LEVELUP || (state == ST_DONE && resultOn);
+    const bool menu = state == ST_MENU || state == ST_PAUSE || (state == ST_DONE && resultOn);
     if (menu) {
         ui.SetPadNav(nav, aP, true);
         if (bP || (state == ST_PAUSE && sP)) {
@@ -554,12 +533,13 @@ void Game::HandleInput(float dt) {
     keys.down = IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S);
     keys.left = IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A);
     keys.right = IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D);
-    keys.hand = IsKeyDown(KEY_SPACE) || padHand || debugHand;
+    keys.hand = IsKeyDown(KEY_SPACE) || debugHand;
     const bool driving = state == ST_RACE || state == ST_FREE || state == ST_COUNT;
     if (!driving) keys = {};
 
     if (IsKeyPressed(KEY_F11) || ((IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT)) && IsKeyPressed(KEY_ENTER))) ToggleBorderlessWindowed();
     if (IsKeyPressed(KEY_R) && (state == ST_RACE || state == ST_FREE)) { Wreck(); ResetCar(); }
+    if (IsKeyPressed(KEY_F3)) showDebug = !showDebug;
     const bool esc = IsKeyPressed(KEY_ESCAPE);
     if (esc || IsKeyPressed(KEY_P)) {   // Esc and P pause while driving; Esc also steps back in menus
         if (driving) Pause();
@@ -570,12 +550,7 @@ void Game::HandleInput(float dt) {
     if (IsKeyPressed(KEY_M)) { audio.SetMuted(!audio.Muted()); save.SetBool("muted", audio.Muted()); Save(); }
     if (IsKeyPressed(KEY_EQUAL) || IsKeyPressed(KEY_KP_ADD)) { audio.SetVolume(audio.Volume() + 1); save.SetInt("vol", audio.Volume()); save.SetBool("muted", audio.Muted()); Save(); }
     if (IsKeyPressed(KEY_MINUS) || IsKeyPressed(KEY_KP_SUBTRACT)) { audio.SetVolume(audio.Volume() - 1); save.SetInt("vol", audio.Volume()); save.SetBool("muted", audio.Muted()); Save(); }
-    if (state == ST_LEVELUP && upLock <= 0) {
-        const int keysN[3][2] = {{KEY_ONE, KEY_KP_1}, {KEY_TWO, KEY_KP_2}, {KEY_THREE, KEY_KP_3}};
-        for (int n = 0; n < 3 && n < (int)upOpts.size(); n++)
-            if (IsKeyPressed(keysN[n][0]) || IsKeyPressed(keysN[n][1])) { audio.Ui(UI_SELECT); ChooseUp(upOpts[n]); break; }
-    }
-    // the game pauses when the window loses focus, like the web version when the tab is hidden
+    // the game pauses when the window loses focus
     if (!IsWindowFocused() && driving && !debugNoFocusPause) Pause();
 }
 
@@ -591,11 +566,10 @@ void Game::Frame(float frameDt) {
     double speed = Hypot(car.vx, car.vy);
     if (state == ST_RACE || state == ST_FREE) {
         speed = Update(dt);
-        if (surv) SurvUpdate(dt);
         if (state == ST_RACE) { run->t += dt; RecordGhost(); if (run->t >= T->limit) Finish(false); }
-    } else if (state == ST_MENU && mode == MODE_CITY && !endless) {
+    } else if (state == ST_MENU && mode == MODE_FREE) {   // the menu background: a slow cruise north
         car.a = -PI / 2; car.vx = 0; car.vy = -70; car.y += car.vy * dt;
-        if (car.y < 300) { car.y = Miami::WORLD_H - 300; cam.y = car.y; }
+        world.Evict(car.x, car.y);
     } else if (state == ST_COUNT) {
         countT -= dt;
         audio.UpdateEngine((float)dt, 0, 0, false, (float)ThrottleIn());
@@ -606,7 +580,6 @@ void Game::Frame(float frameDt) {
     }
     if (goT > 0) { goT -= dt; if (goT <= 0) bannerOn = false; }
     if (state == ST_DONE && !resultOn && resultDelay > 0) { resultDelay -= dt; if (resultDelay <= 0) { resultOn = true; ui.ResetFocus(); } }
-    if (upLock > 0) upLock -= dt;
     for (Popup* p : {&toast, &zmsg}) {
         if (p->t > 0) p->t -= (float)dt;
         float target = p->t > 0 ? 1.0f : 0.0f;

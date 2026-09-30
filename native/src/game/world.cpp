@@ -1,13 +1,17 @@
 #include "world.h"
 #include <algorithm>
 
-const std::vector<uint32_t> DECO = {0xf4a7b9, 0x9ee0cc, 0x8fd3e8, 0xf8c89a, 0xcbb7e6, 0xf3e3a0, 0xf1ede4, 0xffb3a1};   // art deco pastels
-const std::vector<uint32_t> ACCENT = {0x2bb5b0, 0xe2598b, 0xf39a4a, 0x5b8fd6, 0xf1ede4};
-const std::vector<uint32_t> TOWERS = {0xeef0ee, 0xd9e6ea, 0xebe4d6, 0xd3e2e0};
 const std::vector<uint32_t> FRONDS = {0x3f8a3a, 0x4a9a3c, 0x367a34, 0x52a043};
 
 bool CircleHit(const Solid& b, double cx, double cy, double r, Hit& out) {
     double lx, ly, hw, hh, c = 1, s = 0;
+    if (b.circle) {
+        const double dx = cx - b.cx, dy = cy - b.cy, d = Hypot(dx, dy), reach = b.hw + r;
+        if (d >= reach) return false;
+        if (d < 1e-6) { out = {1, 0, reach}; return true; }
+        out = {dx / d, dy / d, reach - d};
+        return true;
+    }
     if (b.rot) {
         c = std::cos(b.ang); s = std::sin(b.ang);
         double dx = cx - b.cx, dy = cy - b.cy;

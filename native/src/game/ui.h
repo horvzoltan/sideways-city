@@ -1,6 +1,6 @@
 // ui.h - immediate-mode menu focus. Each frame the screens register their items with a
 // rectangle; the mouse, the arrow keys and a controller move the focus between them, using
-// the same direction scoring as the web version's navMove().
+// a direction score that prefers items straight ahead.
 #pragma once
 #include "raylib.h"
 #include <vector>

@@ -1,0 +1,40 @@
+# Sideways City stage. Plain text: "key = value" settings, then the track.
+#   width, runoff   road and run-off width (px); laps; pace (higher = less time)
+#   sky, weather    look (dawn, morning, noon, afternoon, sunset, storm, night, predawn / clear, wind, sandstorm)
+#   grip            below 1 is slippery; pass_scale scales the target score; seed places the scenery
+#   pt x y          track control points, driven in order (the road is a smooth curve through them)
+#   landmark type x y [size] [angle]   hand-placed scenery: arch, oasis, salt (a slippery flat), hoodoo, ruin, wall,
+#                                      rock, lantern, palm, balloon, flags
+
+name = Dune Sea
+desc = Wide, flowing curves over soft dunes at first light. Learn to link one slide into the next.
+width = 200
+runoff = 80
+laps = 3
+pace = 219
+sky = dawn
+weather = clear
+grip = 1
+seed = 11
+
+pt 400 300
+pt 900 250
+pt 1150 450
+pt 1450 300
+pt 1900 300
+pt 2250 550
+pt 2000 850
+pt 2300 1150
+pt 2050 1500
+pt 1650 1650
+pt 1400 1350
+pt 1050 1650
+pt 600 1600
+pt 300 1250
+pt 600 950
+pt 250 650
+
+landmark flags 1462 857 1.1 0.4
+landmark balloon 1062 907 1.1
+landmark balloon 862 1257 0.9
+landmark rock 1812 1207 1.2

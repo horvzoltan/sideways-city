@@ -1,0 +1,45 @@
+# Sideways City stage. Plain text: "key = value" settings, then the track.
+#   width, runoff   road and run-off width (px); laps; pace (higher = less time)
+#   sky, weather    look (dawn, morning, noon, afternoon, sunset, storm, night, predawn / clear, wind, sandstorm)
+#   grip            below 1 is slippery; pass_scale scales the target score; seed places the scenery
+#   pt x y          track control points, driven in order (the road is a smooth curve through them)
+#   landmark type x y [size] [angle]   hand-placed scenery: arch, oasis, salt (a slippery flat), hoodoo, ruin, wall,
+#                                      rock, lantern, palm, balloon, flags
+
+name = First Light Ridge
+desc = The narrowest, twistiest road of all, along the ridge before dawn. The final test.
+width = 150
+runoff = 50
+laps = 3
+pace = 253
+sky = predawn
+weather = wind
+grip = 1
+seed = 18
+
+pt 300 300
+pt 800 250
+pt 1050 450
+pt 850 650
+pt 1150 800
+pt 1450 600
+pt 1750 300
+pt 2150 400
+pt 2250 750
+pt 1950 950
+pt 2250 1200
+pt 2000 1550
+pt 1600 1400
+pt 1400 1700
+pt 900 1650
+pt 1000 1300
+pt 650 1100
+pt 300 1300
+pt 200 900
+pt 450 650
+
+landmark flags 1569 1012 1.2 0.2
+landmark flags 1869 612 0.9 -0.6
+landmark hoodoo 1269 1412 1.0
+landmark hoodoo 1919 1262 0.9
+landmark balloon 1569 1012 0.9

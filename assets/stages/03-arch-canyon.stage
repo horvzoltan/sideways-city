@@ -1,0 +1,42 @@
+# Sideways City stage. Plain text: "key = value" settings, then the track.
+#   width, runoff   road and run-off width (px); laps; pace (higher = less time)
+#   sky, weather    look (dawn, morning, noon, afternoon, sunset, storm, night, predawn / clear, wind, sandstorm)
+#   grip            below 1 is slippery; pass_scale scales the target score; seed places the scenery
+#   pt x y          track control points, driven in order (the road is a smooth curve through them)
+#   landmark type x y [size] [angle]   hand-placed scenery: arch, oasis, salt (a slippery flat), hoodoo, ruin, wall,
+#                                      rock, lantern, palm, balloon, flags
+
+name = Arch Canyon
+desc = Tight turns through the canyon and under the stone arches. Precision over speed.
+width = 175
+runoff = 60
+laps = 3
+pace = 245
+sky = noon
+weather = clear
+grip = 1
+seed = 13
+
+pt 300 300
+pt 1000 300
+pt 1250 550
+pt 1000 780
+pt 1450 950
+pt 1950 750
+pt 2250 1000
+pt 2000 1350
+pt 1550 1300
+pt 1300 1600
+pt 750 1650
+pt 500 1350
+pt 700 1100
+pt 350 850
+
+landmark arch 1691 856 1.98 1.06
+landmark arch 1114 1651 1.98 4.55
+landmark arch 287 680 1.98 -0.28
+landmark hoodoo 1053 1251 1.3
+landmark hoodoo 1130 1200 0.9
+landmark hoodoo 990 1330 1.0
+landmark hoodoo 653 651 1.2
+landmark hoodoo 720 600 0.8

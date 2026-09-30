@@ -1,6 +1,7 @@
 #include "draw.h"
 #include <algorithm>
 #include <cmath>
+#include <unordered_map>
 
 Color Shade(uint32_t hex, double f) {
     auto ch = [&](int v) { return (unsigned char)Clamp(JsRound(v * f), 0, 255); };
@@ -99,6 +100,18 @@ void FillRoundRect(float x, float y, float w, float h, float r, Color c) {
     FillConvex(p.data(), (int)p.size(), c);
 }
 
+void StrokeRoundRect(float x, float y, float w, float h, float r, float width, Color c) {
+    r = std::min(r, std::min(w, h) / 2);
+    std::vector<Vector2> p;
+    const float cx[4] = {x + w - r, x + w - r, x + r, x + r}, cy[4] = {y + r, y + h - r, y + h - r, y + r};
+    for (int k = 0; k < 4; k++)
+        for (int i = 0; i <= 6; i++) {
+            float a = -PI / 2 + (k + i / 6.0f) * PI / 2;
+            p.push_back({cx[k] + std::cos(a) * r, cy[k] + std::sin(a) * r});
+        }
+    Polyline(p.data(), (int)p.size(), true, width, c, BUTT, false);
+}
+
 void StrokeArc(float x, float y, float r, float a0, float a1, float width, Color c) {
     if (c.a == 0) return;
     int n = Segs(r, std::fabs(a1 - a0));
@@ -158,7 +171,11 @@ void Polyline(const Vector2* pin, int nin, bool closed, float width, Color c, Ca
     const int n = (int)p.size();
     if (n < 2) { if (cap == ROUND) FillCircle(pin[0].x, pin[0].y, width / 2, c); return; }
     const float h = width / 2;
-    std::vector<Vector2> off(n);
+    // Each vertex gets a mitred offset direction and a length per side. On the inside of a bend
+    // tighter than the stroke, the edge stops at the bend's centre instead of folding over itself
+    // (which shows as spikes on translucent strokes); opaque strokes get round joins stamped on top.
+    std::vector<Vector2> dir(n);
+    std::vector<float> radius(n, 1e9f), turnSign(n, 0);
     std::vector<char> stamp(n, 0);
     auto dirTo = [&](int a, int b, float& len) {
         float dx = p[b].x - p[a].x, dy = p[b].y - p[a].y;
@@ -172,25 +189,40 @@ void Polyline(const Vector2* pin, int nin, bool closed, float width, Color c, Ca
         if (hasPrev) d0 = dirTo((i - 1 + n) % n, i, l0);
         if (hasNext) d1 = dirTo(i, (i + 1) % n, l1);
         Vector2 n0{-d0.y, d0.x}, n1{-d1.y, d1.x};
-        if (!hasPrev) { off[i] = {n1.x * h, n1.y * h}; continue; }
-        if (!hasNext) { off[i] = {n0.x * h, n0.y * h}; continue; }
+        if (!hasPrev) { dir[i] = n1; continue; }
+        if (!hasNext) { dir[i] = n0; continue; }
         Vector2 m{n0.x + n1.x, n0.y + n1.y};
         float ml = std::sqrt(m.x * m.x + m.y * m.y);
         float cosT = std::clamp(n0.x * n1.x + n0.y * n1.y, -1.0f, 1.0f);
         if (ml < 1e-4f) { m = n1; ml = 1; }
         m = {m.x / ml, m.y / ml};
         float dot = std::max(0.35f, m.x * n1.x + m.y * n1.y);   // mitre, limited
-        off[i] = {m.x * h / dot, m.y * h / dot};
+        dir[i] = {m.x / dot, m.y / dot};
         float turn = std::acos(cosT);
-        if (joins && turn > 1e-3f && h > 0.7f * std::min(l0, l1) / turn) stamp[i] = 1;   // tighter than the stroke: round it off
+        if (turn > 1e-3f) radius[i] = std::min(l0, l1) / turn;
+        turnSign[i] = d0.x * d1.y - d0.y * d1.x > 0 ? 1.0f : -1.0f;   // +1: bending towards the + side
+        if (joins && turn > 1e-3f && h > 0.7f * radius[i]) stamp[i] = 1;   // tighter than the stroke: round it off
         if (joins && turn > 0.5f) stamp[i] = 1;
+    }
+    std::vector<Vector2> offPlus(n), offMinus(n);
+    for (int i = 0; i < n; i++) {
+        float r = radius[i];
+        for (int k = -2; k <= 2; k++) {
+            int j = i + k;
+            if (closed) j = (j % n + n) % n; else if (j < 0 || j >= n) continue;
+            r = std::min(r, radius[j]);
+        }
+        const float inner = std::min(h, 0.95f * r);
+        const float hp = turnSign[i] > 0 ? inner : h, hm = turnSign[i] < 0 ? inner : h;
+        offPlus[i] = {dir[i].x * hp, dir[i].y * hp};
+        offMinus[i] = {-dir[i].x * hm, -dir[i].y * hm};
     }
     rlBegin(RL_TRIANGLES);
     const int segs = closed ? n : n - 1;
     for (int i = 0; i < segs; i++) {
         int j = (i + 1) % n;
-        Vector2 a{p[i].x + off[i].x, p[i].y + off[i].y}, b{p[i].x - off[i].x, p[i].y - off[i].y};
-        Vector2 cc{p[j].x - off[j].x, p[j].y - off[j].y}, d{p[j].x + off[j].x, p[j].y + off[j].y};
+        Vector2 a{p[i].x + offPlus[i].x, p[i].y + offPlus[i].y}, b{p[i].x + offMinus[i].x, p[i].y + offMinus[i].y};
+        Vector2 cc{p[j].x + offMinus[j].x, p[j].y + offMinus[j].y}, d{p[j].x + offPlus[j].x, p[j].y + offPlus[j].y};
         V(a, c); V(b, c); V(cc, c);
         V(a, c); V(cc, c); V(d, c);
     }
@@ -283,12 +315,6 @@ bool LoadFonts() {
     return g_fontsOk;
 }
 
-void UnloadFonts() {
-    for (auto& fs : g_fonts) {
-        for (Font& f : fs.sizes) if (f.texture.id != GetFontDefault().texture.id) UnloadFont(f);
-        fs.sizes.clear();
-    }
-}
 
 float TextWidth(FontWeight fw, const std::string& s, float size, float spacing) {
     const Font& f = PickFont(fw, size);
@@ -334,12 +360,114 @@ void Text(FontWeight fw, const std::string& s, float x, float y, float size, Col
     rlSetTexture(0);
 }
 
+// ---------- glow (CSS text-shadow with blur) ----------
+// Each glowing letter is drawn once into a small texture, blurred with a Gaussian shader and cached;
+// after that a glow is one textured quad per letter. Blurring letter by letter gives the same result
+// as blurring the whole word, because the blur is linear and the letters do not overlap.
+namespace {
+const char* BLUR_FS = R"(#version 330
+in vec2 fragTexCoord;
+in vec4 fragColor;
+uniform sampler2D texture0;
+uniform vec2 dir;       // one texel along the blur direction
+uniform float radius;   // pixels
+out vec4 finalColor;
+void main() {
+    float sigma = max(radius * 0.5, 0.5), sum = 0.0, wsum = 0.0;
+    int R = int(ceil(radius));
+    for (int i = -48; i <= 48; i++) {
+        if (i < -R || i > R) continue;
+        float w = exp(-float(i * i) / (2.0 * sigma * sigma));
+        sum += texture(texture0, fragTexCoord + dir * float(i)).a * w;
+        wsum += w;
+    }
+    finalColor = vec4(1.0, 1.0, 1.0, sum / wsum);
+})";
+Shader g_blur{};
+bool g_blurTried = false;
+struct GlowGlyph { RenderTexture2D rt; float margin; };
+std::unordered_map<uint64_t, GlowGlyph> g_glow;
+
+bool BlurReady() {
+    if (!g_blurTried) {
+        g_blurTried = true;
+        g_blur = LoadShaderFromMemory(nullptr, BLUR_FS);
+    }
+    return g_blur.id != 0 && g_blur.id != rlGetShaderIdDefault();
+}
+
+// One blur pass from `src` into `dst`, copying (not blending) the result.
+void BlurPass(const RenderTexture2D& src, const RenderTexture2D& dst, float dx, float dy, float radius) {
+    const float w = (float)src.texture.width, h = (float)src.texture.height, d[2] = {dx / w, dy / h};
+    BeginTextureMode(dst);
+    ClearBackground(BLANK);
+    rlSetBlendFactors(RL_ONE, RL_ZERO, RL_FUNC_ADD);
+    BeginBlendMode(BLEND_CUSTOM);
+    BeginShaderMode(g_blur);
+    SetShaderValue(g_blur, GetShaderLocation(g_blur, "dir"), d, SHADER_UNIFORM_VEC2);
+    SetShaderValue(g_blur, GetShaderLocation(g_blur, "radius"), &radius, SHADER_UNIFORM_FLOAT);
+    DrawTextureRec(src.texture, {0, 0, w, -h}, {0, 0}, WHITE);
+    EndShaderMode();
+    EndBlendMode();
+    EndTextureMode();
+}
+
+const GlowGlyph* GlowFor(FontWeight fw, const Font& f, int idx, int cp, float size, float radius) {
+    const uint64_t key = (uint64_t)fw | ((uint64_t)(cp & 0x1fffff) << 1) | ((uint64_t)std::min(4095, (int)std::lround(size * 4)) << 22) |
+                         ((uint64_t)std::min(4095, (int)std::lround(radius * 4)) << 34);
+    auto it = g_glow.find(key);
+    if (it != g_glow.end()) return &it->second;
+    const float scale = size / f.baseSize, pad = (float)f.glyphPadding;
+    const Rectangle r = f.recs[idx];
+    const float gw = (r.width + 2 * pad) * scale, gh = (r.height + 2 * pad) * scale, m = std::ceil(radius * 1.2f) + 2;
+    const int W = (int)std::ceil(gw + 2 * m), H = (int)std::ceil(gh + 2 * m);
+    RenderTexture2D a = LoadRenderTexture(W, H), b = LoadRenderTexture(W, H);
+    rlDrawRenderBatchActive();
+    BeginTextureMode(a);
+    ClearBackground(BLANK);
+    rlSetBlendFactorsSeparate(RL_SRC_ALPHA, RL_ONE_MINUS_SRC_ALPHA, RL_ONE, RL_ONE_MINUS_SRC_ALPHA, RL_FUNC_ADD, RL_FUNC_ADD);
+    BeginBlendMode(BLEND_CUSTOM_SEPARATE);
+    DrawTexturePro(f.texture, {r.x - pad, r.y - pad, r.width + 2 * pad, r.height + 2 * pad}, {m, m, gw, gh}, {0, 0}, 0, WHITE);
+    EndBlendMode();
+    EndTextureMode();
+    BlurPass(a, b, 1, 0, radius);
+    BlurPass(b, a, 0, 1, radius);
+    UnloadRenderTexture(b);
+    SetTextureFilter(a.texture, TEXTURE_FILTER_BILINEAR);
+    return &(g_glow[key] = {a, m});
+}
+}  // namespace
+
 void TextGlow(FontWeight fw, const std::string& s, float x, float y, float size, Color glow, float radius, float skew, float spacing) {
-    for (int ring = 1; ring <= 2; ring++)
-        for (int i = 0; i < 8; i++) {
-            float a = i * PI / 4 + ring * 0.4f, r = radius * ring / 2;
-            Text(fw, s, x + std::cos(a) * r, y + std::sin(a) * r, size, Alpha(glow, 0.22f / ring), skew, spacing);
+    if (s.empty() || glow.a == 0) return;
+    if (!BlurReady()) return;   // no shader support: skip the glow rather than fake it
+    const Font& f = PickFont(fw, size);
+    const float scale = size / f.baseSize, k = std::tan(skew * DEG2RAD), mid = y + size * 0.55f, pad = (float)f.glyphPadding;
+    // CSS text-shadow blur is roughly two standard deviations; the blurred letters are faint, so boost them
+    const Color c = Alpha(glow, 1.8f);
+    float pen = x;
+    for (size_t i = 0; i < s.size();) {
+        int bytes = 0, cp = GetCodepointNext(s.c_str() + i, &bytes);
+        i += bytes > 0 ? bytes : 1;
+        const int idx = GetGlyphIndex(f, cp);
+        const Rectangle r = f.recs[idx];
+        if (cp != ' ' && cp != '\t') {
+            const GlowGlyph* g = GlowFor(fw, f, idx, cp, size, radius);
+            const float gx = pen + (f.glyphs[idx].offsetX - pad) * scale - g->margin, gy = y + (f.glyphs[idx].offsetY - pad) * scale - g->margin;
+            const float x0 = gx, y0 = gy, x1 = gx + g->rt.texture.width, y1 = gy + g->rt.texture.height;
+            const float s0 = (mid - y0) * k, s1 = (mid - y1) * k;
+            rlSetTexture(g->rt.texture.id);
+            rlBegin(RL_QUADS);
+            rlColor4ub(c.r, c.g, c.b, c.a);
+            rlTexCoord2f(0, 1); rlVertex2f(x0 + s0, y0);   // render textures are stored upside down
+            rlTexCoord2f(0, 0); rlVertex2f(x0 + s1, y1);
+            rlTexCoord2f(1, 0); rlVertex2f(x1 + s1, y1);
+            rlTexCoord2f(1, 1); rlVertex2f(x1 + s0, y0);
+            rlEnd();
+            rlSetTexture(0);
         }
+        pen += (f.glyphs[idx].advanceX ? f.glyphs[idx].advanceX : r.width) * scale + spacing;
+    }
 }
 
 std::vector<std::string> WrapText(FontWeight fw, const std::string& s, float size, float maxW, float spacing) {
@@ -360,4 +488,16 @@ std::vector<std::string> WrapText(FontWeight fw, const std::string& s, float siz
     flushWord();
     if (!line.empty()) lines.push_back(line);
     return lines;
+}
+
+void UnloadFonts() {
+    for (auto& kv : g_glow) UnloadRenderTexture(kv.second.rt);
+    g_glow.clear();
+    if (g_blur.id && g_blur.id != rlGetShaderIdDefault()) UnloadShader(g_blur);
+    g_blur = Shader{};
+    g_blurTried = false;
+    for (auto& fs : g_fonts) {
+        for (Font& f : fs.sizes) if (f.texture.id != GetFontDefault().texture.id) UnloadFont(f);
+        fs.sizes.clear();
+    }
 }

@@ -36,6 +36,21 @@ const std::vector<Vector2>& BodyPath() {
     return p;
 }
 
+// Side walls of a flat outline (clockwise, in the car's frame) raised by `lift`: one quad per edge.
+// Walls facing one side of the screen's up axis are lit, the others in shade.
+void Extrude(const Vector2* p, int n, Vector2 lift, Color base) {
+    const uint32_t hex = ToHex(base);
+    for (int i = 0; i < n; i++) {
+        const Vector2 a = p[i], b = p[(i + 1) % n];
+        const float ex = b.x - a.x, ey = b.y - a.y;
+        const float side = ey * lift.y + ex * lift.x;   // outward normal (ey, -ex) against the lift, turned a quarter
+        Color c = Shade(hex, side > 0 ? 0.92 : 0.7);
+        c.a = base.a;
+        const Vector2 q[4] = {a, b, {b.x + lift.x, b.y + lift.y}, {a.x + lift.x, a.y + lift.y}};
+        draw::FillConvex(q, 4, c);
+    }
+}
+
 // blend state for drawing into a minimap texture: premultiplied colour, correct alpha
 void BeginTextureBlend() {
     rlSetBlendFactorsSeparate(RL_SRC_ALPHA, RL_ONE_MINUS_SRC_ALPHA, RL_ONE, RL_ONE_MINUS_SRC_ALPHA, RL_FUNC_ADD, RL_FUNC_ADD);
@@ -66,6 +81,16 @@ void Game::DrawCar(double x, double y, double a, double w, bool braking, const P
     Push(12.5, 0, w * 0.14);
     Rect(-4.5f, -12.5f, 9, 3, tyre); Rect(-4.5f, 9.5f, 9, 3, tyre);
     Pop();
+    // isometric: the body and the cabin stand up from the ground. `up` is the screen's up in the
+    // world; turn it into the car's frame like the shadow above.
+    const bool solid = up.x != 0 || up.y != 0;
+    const float CAR_H = 7, CAB_H = 5;   // in car units (the car is 48 long)
+    const Vector2 f{ca * (float)up.x + sa * (float)up.y, -sa * (float)up.x + ca * (float)up.y};
+    const Vector2 lift{f.x * CAR_H, f.y * CAR_H}, cab{f.x * CAB_H, f.y * CAB_H};
+    if (solid) {
+        Extrude(body.data(), n, lift, A(p.dark));
+        rlTranslatef(lift.x, lift.y, 0);
+    }
     // metallic paint: a vertical gradient light -> base -> dark
     auto grad = [&](Vector2 v) {
         float u = (v.y + 12) / 24;
@@ -86,13 +111,20 @@ void Game::DrawCar(double x, double y, double a, double w, bool braking, const P
     Rect(4, -12.6f, 3, 2.4f, A(p.trim)); Rect(4, 10.2f, 3, 2.4f, A(p.trim));
     // glass: wraparound windshield, side windows, rear hatch
     const Color glass = A(Hex(0x161b22));
+    if (solid) {   // the cabin rises above the body
+        static const Vector2 cabin[8] = {{11.5f, -7.2f}, {11.5f, 7.2f}, {3, 8.8f}, {-9, 8.4f}, {-13.5f, 6.8f}, {-13.5f, -6.8f}, {-9, -8.4f}, {3, -8.8f}};
+        Extrude(cabin, 8, cab, A(Hex(0x0d1117)));
+        rlTranslatef(cab.x, cab.y, 0);
+    }
     Poly({{11.5f, -7.2f}, {11.5f, 7.2f}, {3, 8.8f}, {3, -8.8f}}, glass);
     Poly({{3, -8.8f}, {-9, -8.4f}, {-13.5f, -6.8f}, {-13.5f, 6.8f}, {-9, 8.4f}, {3, 8.8f}}, glass);
     // roof panel over the glass
     draw::FillRoundRect(-8.5f, -7.2f, 11, 14.4f, 2, A(p.roof));
     Rect(9, -6, 1.5f, 5, A(Rgba(255, 255, 255, .18f)));   // windshield glint
-    // twin stripes on hood, roof and deck
-    for (auto [x0, x1] : {std::pair<float, float>{11.5f, 24.4f}, {-8.5f, 2.5f}, {-23.2f, -13.5f}}) {
+    // twin stripes on the roof, then back down on the body for the hood and deck
+    Rect(-8.5f, -3.4f, 11, 2, A(p.stripe)); Rect(-8.5f, 1.4f, 11, 2, A(p.stripe));
+    if (solid) rlTranslatef(-cab.x, -cab.y, 0);
+    for (auto [x0, x1] : {std::pair<float, float>{11.5f, 24.4f}, {-23.2f, -13.5f}}) {
         Rect(x0, -3.4f, x1 - x0, 2, A(p.stripe)); Rect(x0, 1.4f, x1 - x0, 2, A(p.stripe));
     }
     // hood vents
@@ -109,7 +141,8 @@ void Game::DrawCar(double x, double y, double a, double w, bool braking, const P
 
 // ---------- scenery with fake perspective ----------
 void Game::DrawPalm(const Scen& p) {
-    const float ox = (float)(p.x + (p.x - cam.x) * p.ht), oy = (float)(p.y + (p.y - cam.y) * p.ht);
+    const V2 top = TopOf(p.x, p.y, p.ht);
+    const float ox = (float)top.x, oy = (float)top.y;
     const float shx = (float)(shadowX * p.ht * 100), shy = (float)(shadowY * p.ht * 100);   // cast along the sun
     draw::FillEllipse((float)p.x + shx, (float)p.y + shy, (float)p.r * 0.55f, (float)p.r * 0.4f, std::atan2(shy, shx), Rgba(0, 0, 0, .12f));
     draw::Line((float)p.x, (float)p.y, ox, oy, 6, Hex(0x8a6a45), draw::ROUND);
@@ -133,7 +166,7 @@ void Game::Render(double speed) {
     DrawRectangle(0, 0, (int)W, (int)H, lk.sandLow);
     shadowX = std::cos(lk.shadowDir) * lk.shadowLen; shadowY = std::sin(lk.shadowDir) * lk.shadowLen;   // shadows fall along the sun
     const double dt = std::min(1.0 / 30, (double)GetFrameTime());
-    const double scaleBase = std::min(1.15, std::max(0.75, std::min(Wc, Hc) / 620.0)) * (mode == MODE_TRACK ? 0.8 : 1);
+    const double scaleBase = std::min(1.15, std::max(0.75, std::min(Wc, Hc) / 620.0)) * (mode == MODE_TRACK ? 0.8 : 1) * (iso ? 1.15 : 1);
     const double tz = scaleBase * (1.1 - std::min(0.38, speed / 1500));
     const double kz = 1 - std::pow(1 - 0.04, dt * 60), kp = 1 - std::pow(1 - 0.1, dt * 60);   // per-frame easing at 60 fps
     cam.z += (tz - cam.z) * kz;
@@ -141,17 +174,37 @@ void Game::Render(double speed) {
     cam.x += (tx - cam.x) * kp; cam.y += (ty - cam.y) * kp;
     const double sx = (std::rand() / (double)RAND_MAX - .5) * shake, sy = (std::rand() / (double)RAND_MAX - .5) * shake;
 
-    Camera2D c{};
-    c.offset = {(float)(W / 2 + sx * S), (float)(H / 2 + sy * S)};
-    c.target = {(float)cam.x, (float)cam.y};
-    c.zoom = (float)(cam.z * S);
-    BeginMode2D(c);
-    draw::pxPerUnit = c.zoom;
-    const double hw = Wc / 2 / cam.z + 64, hh = Hc / 2 / cam.z + 64;
+    // the camera, as BeginMode2D would build it, with the isometric turn and squash between the
+    // zoom and the pan (Camera2D cannot squash)
+    const double Z = cam.z * S;
+    rlDrawRenderBatchActive();
+    rlLoadIdentity();
+    rlTranslatef((float)(W / 2 + sx * S), (float)(H / 2 + sy * S), 0);
+    double hw, hh;
+    if (iso) {
+        rlScalef((float)Z, (float)(Z * ISO_SQUASH), 1);
+        rlRotatef((float)ISO_ROT, 0, 0, 1);
+        up = {-std::sqrt(2.0), -std::sqrt(2.0)};
+        hw = hh = (Wc / 2 + Hc) * 0.7072 / cam.z + 64;   // the screen's diamond, as a box in the world
+    } else {
+        rlScalef((float)Z, (float)Z, 1);
+        up = {0, 0};
+        hw = Wc / 2 / cam.z + 64; hh = Hc / 2 / cam.z + 64;
+    }
+    rlTranslatef((float)-cam.x, (float)-cam.y, 0);
+    draw::pxPerUnit = (float)Z;
     desert.Draw(*this, hw, hh);
     EndMode2D();
+    up = {0, 0};
     draw::pxPerUnit = 1;
     desert.DrawScreen(*this);   // night light, colour grade, sandstorm haze
+}
+
+Vector2 Game::ToScreen(double x, double y) const {
+    const double px = x - cam.x, py = y - cam.y, Z = cam.z * S;
+    if (!iso) return {(float)(W / 2 + px * Z), (float)(H / 2 + py * Z)};
+    const double c = std::cos(ISO_ROT * DEG2RAD), s = std::sin(ISO_ROT * DEG2RAD);
+    return {(float)(W / 2 + (c * px - s * py) * Z), (float)(H / 2 + (s * px + c * py) * ISO_SQUASH * Z)};
 }
 
 // ---------- minimap ----------

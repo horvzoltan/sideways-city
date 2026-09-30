@@ -62,6 +62,20 @@ public:
     Handling handling;       // all the handling constants (car.h)
     bool showDebug = false;  // F3: handling numbers
     struct { double x = 0, y = 0, z = 1; } cam;
+    // The view: top-down, or isometric (the world turned 45 degrees and squashed 2:1). Only the
+    // drawing changes; the simulation stays in flat world coordinates. `up` is the world offset of
+    // one unit of screen height while the world is being drawn: (-sqrt2, -sqrt2) in isometric, zero
+    // otherwise (top-down uses the fake perspective, and the menus draw the car flat).
+    bool iso = false;
+    V2 up{0, 0};
+    static constexpr double ISO_ROT = 45, ISO_SQUASH = 0.5;
+    static constexpr double ISO_H = 220;   // world pixels of height per unit of Scen::ht in isometric
+    V2 TopOf(double x, double y, double ht) const {   // where the top of something ht high is drawn
+        if (up.x || up.y) return {x + up.x * ht * ISO_H, y + up.y * ht * ISO_H};
+        return {x + (x - cam.x) * ht, y + (y - cam.y) * ht};
+    }
+    Vector2 ToScreen(double x, double y) const;   // world to pixels through the camera (no shake)
+    void SetView(bool isometric);                  // switches, saves and announces the view
     Chain chain;
     int score = 0, best = 0;
     std::vector<SmokePuff> smoke;

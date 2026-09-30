@@ -34,7 +34,7 @@ Every build puts its output in `build*/bin/`:
 ## Files next to the game
 
 - `sideways.cfg`: display settings, written by the launcher. Any setting can be overridden on the command line, e.g. `./sideways +fullscreen 1 +width 1920 +height 1080`.
-- `save.cfg`: best drift, stage progress (saved by stage name), paint and volume.
+- `save.cfg`: best drift, stage progress (saved by stage name), paint and volume, and the view (`view = top` or `iso`; `+view iso` on the command line tries it without saving).
 - `ghosts/`: the best run on each stage, replayed as a ghost. A ghost stores a fingerprint of its stage file, so editing a stage retires its old ghost.
 
 ## Stages
@@ -52,6 +52,7 @@ F11 (or Alt+Enter) toggles fullscreen.
 | ← → / A D | steer |
 | Space | handbrake |
 | R | reset the car |
+| V | switch between the top-down and the isometric view |
 | Esc / P | pause |
 | M, − / + | mute, volume |
 

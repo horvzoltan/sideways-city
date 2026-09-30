@@ -47,6 +47,7 @@ bool Game::Init(bool quitButton) {
     best = save.GetInt("best", 0);
     audio.Init(std::clamp(save.GetInt("vol", 6), 0, 10), save.GetBool("muted", false));
     unsigned hex = 0;
+    iso = save.Get("view", "top") == "iso";
     std::string p = save.Get("paint", "#f0631a");
     if (p.size() == 7 && p[0] == '#' && std::sscanf(p.c_str() + 1, "%6x", &hex) == 1) paintHex = hex;
     paint = MakePaint(paintHex);
@@ -473,6 +474,13 @@ void Game::Resume() {
     state = pausedFrom;
 }
 
+void Game::SetView(bool isometric) {
+    iso = isometric;
+    save.Set("view", iso ? "iso" : "top");
+    Save();
+    Toast(iso ? "Isometric view" : "Top-down view", SAND_C);
+}
+
 void Game::ChoosePaint(uint32_t hex) {
     paintHex = hex & 0xffffff;
     paint = MakePaint(paintHex);
@@ -540,6 +548,7 @@ void Game::HandleInput(float dt) {
     if (IsKeyPressed(KEY_F11) || ((IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT)) && IsKeyPressed(KEY_ENTER))) ToggleBorderlessWindowed();
     if (IsKeyPressed(KEY_R) && (state == ST_RACE || state == ST_FREE)) { Wreck(); ResetCar(); }
     if (IsKeyPressed(KEY_F3)) showDebug = !showDebug;
+    if (IsKeyPressed(KEY_V)) SetView(!iso);
     const bool esc = IsKeyPressed(KEY_ESCAPE);
     if (esc || IsKeyPressed(KEY_P)) {   // Esc and P pause while driving; Esc also steps back in menus
         if (driving) Pause();

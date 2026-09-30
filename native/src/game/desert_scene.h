@@ -3,6 +3,7 @@
 #pragma once
 #include "raylib.h"
 #include "world.h"
+#include <functional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -57,7 +58,8 @@ private:
     float storm = 0;
     std::unordered_map<long long, Texture2D> chunkTex;   // dunes baked per chunk
     void DrawFree(Game& g, double hw, double hh);
-    void DrawScenery(Game& g, const std::vector<const Scen*>& items, double hw, double hh);
+    // draws the standing scenery in depth order, calling drawCar where the car belongs in it
+    void DrawScenery(Game& g, const std::vector<const Scen*>& items, double hw, double hh, const std::function<void()>& drawCar);
     std::vector<V2> lamps;   // lantern tops seen this frame, for the night glow
     void BakeChunk(int i, int j);
 };

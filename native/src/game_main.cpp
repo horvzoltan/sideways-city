@@ -50,6 +50,7 @@ int main(int argc, char** argv) {
     game.debugHand = cfg.GetBool("debug_hand", false);
     game.debugNoFocusPause = !start.empty() || cfg.GetBool("debug_nofocuspause", false);
     const int autoShot = cfg.GetInt("debug_autoshot", 0);
+    if (cfg.values.count("view")) game.iso = cfg.Get("view", "top") == "iso";   // +view iso|top: try the isometric view
     if (cfg.values.count("debug_day")) game.desert.SetDay(cfg.GetFloat("debug_day", 0.2));   // +debug_day 0..1: free roam's time
     if (cfg.values.count("debug_x")) {   // +debug_x X +debug_y Y: park the car (and camera) there, for screenshots
         game.car.x = game.cam.x = cfg.GetFloat("debug_x", 0);

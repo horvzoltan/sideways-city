@@ -35,16 +35,26 @@ inline Vector2 F(double x, double y) { return {(float)x, (float)y}; }
 // ---------- scenery drawing ----------
 struct Ctx {
     const Look& lk;
-    double camX, camY, now;
+    const Game& g;
+    double now;
     Color Tint(uint32_t hex, float k = 1) const {   // a colour under this light
         const Color c = Hex(hex);
         return {(unsigned char)Clamp(c.r * lk.light.r / 255.0 * k, 0, 255), (unsigned char)Clamp(c.g * lk.light.g / 255.0 * k, 0, 255),
                 (unsigned char)Clamp(c.b * lk.light.b / 255.0 * k, 0, 255), 255};
     }
-    V2 Top(double x, double y, double ht) const { return {x + (x - camX) * ht, y + (y - camY) * ht}; }   // fake perspective
+    V2 Top(double x, double y, double ht) const { return g.TopOf(x, y, ht); }   // fake perspective, or straight up in isometric
     V2 Shadow(double ht) const { return {std::cos(lk.shadowDir) * lk.shadowLen * ht * 100, std::sin(lk.shadowDir) * lk.shadowLen * ht * 100}; }
     Color ShadowCol(float k = 1) const { return Alpha(lk.shadow, k); }
 };
+
+// Round things seen from the side (a balloon, a lamp) must not be squashed by the isometric view:
+// draw them at the origin between these, which undo the camera's turn and squash around (x, y).
+void BeginUpright(const Ctx& C, double x, double y) {
+    rlPushMatrix();
+    rlTranslatef((float)x, (float)y, 0);
+    if (C.g.up.x || C.g.up.y) { rlRotatef((float)-Game::ISO_ROT, 0, 0, 1); rlScalef(1, (float)(1 / Game::ISO_SQUASH), 1); }
+}
+void EndUpright() { rlPopMatrix(); }
 
 // a lumpy round outline, the same every frame for a given seed
 std::vector<Vector2> Blob(double x, double y, double r, double seed, int n = 10) {
@@ -124,8 +134,10 @@ void DrawLantern(const Ctx& C, const Scen& d) {
     const V2 top = C.Top(d.x, d.y, d.ht), sh = C.Shadow(d.ht);
     draw::Line((float)d.x, (float)d.y, (float)(d.x + sh.x), (float)(d.y + sh.y), 3, C.ShadowCol());
     draw::Line((float)d.x, (float)d.y, (float)top.x, (float)top.y, 3, C.Tint(d.col), draw::ROUND);
-    draw::FillCircle((float)top.x, (float)top.y, 6, C.lk.lights ? Hex(0xffd58a) : C.Tint(0xe8c890));
-    draw::FillCircle((float)top.x, (float)top.y, 3, C.lk.lights ? Hex(0xfff3d0) : C.Tint(0xf8e8c8));
+    BeginUpright(C, top.x, top.y);
+    draw::FillCircle(0, 0, 6, C.lk.lights ? Hex(0xffd58a) : C.Tint(0xe8c890));
+    draw::FillCircle(0, 0, 3, C.lk.lights ? Hex(0xfff3d0) : C.Tint(0xf8e8c8));
+    EndUpright();
 }
 
 void DrawGrass(const Ctx& C, const Scen& d) {
@@ -257,10 +269,12 @@ void DrawBalloon(const Ctx& C, const Scen& d, double x, double y, bool shadowOnl
     }
     const V2 p = C.Top(x, y, d.ht);
     const float r = (float)(d.r * (1 + d.ht * 0.5));
+    BeginUpright(C, p.x, p.y);
     for (int i = 0; i < 8; i++)
-        draw::FillSector((float)p.x, (float)p.y, r, (float)(i * PI / 4), (float)((i + 1) * PI / 4), C.Tint(i % 2 ? d.col : d.col2));
-    draw::FillCircle((float)(p.x - r * 0.25), (float)(p.y - r * 0.25), r * 0.35f, Alpha(WHITE, 0.18f));
-    draw::FillRect((float)p.x - 4, (float)p.y - 4, 8, 8, C.Tint(0x7a5a3a));   // the basket, seen from above
+        draw::FillSector(0, 0, r, (float)(i * PI / 4), (float)((i + 1) * PI / 4), C.Tint(i % 2 ? d.col : d.col2));
+    draw::FillCircle(-r * 0.25f, -r * 0.25f, r * 0.35f, Alpha(WHITE, 0.18f));
+    draw::FillRect(-4, -4, 8, 8, C.Tint(0x7a5a3a));   // the basket, seen from above
+    EndUpright();
 }
 }  // namespace
 
@@ -421,7 +435,7 @@ void DesertScene::DrawFree(Game& g, double hw, double hh) {
         lk = LookAtTime(day, storm);
     } else lk = LookAtTime(0.55, 0);
     UpdateWeather(g, hw, hh, dt);
-    const Ctx C{lk, g.cam.x, g.cam.y, g.now};
+    const Ctx C{lk, g, g.now};
     const double CH = DesertWorld::CH;
     auto chunks = g.world.ChunksIn(g.cam.x - hw, g.cam.y - hh, g.cam.x + hw, g.cam.y + hh);
     // the dunes: baked as they come into view, at most two a frame
@@ -458,11 +472,12 @@ void DesertScene::DrawFree(Game& g, double hw, double hh) {
             else if (d.t == SC_OASIS && visible(d.x, d.y, d.r + 60)) DrawOasis(C, d);
         }
     for (const SkidMark& s : g.skids) draw::Line(s.x0, s.y0, s.x1, s.y1, 4, lk.skid);
-    g.DrawCar(g.car.x, g.car.y, g.car.a, g.car.w, g.BrakeIn() > 0.1, g.paint);
-    DrawPuffs(C, g.smoke, lk);
     std::vector<const Scen*> items;
     for (DesertChunk* ch : chunks) for (const Scen& d : ch->scen) items.push_back(&d);
-    DrawScenery(g, items, hw, hh);
+    DrawScenery(g, items, hw, hh, [&] {
+        g.DrawCar(g.car.x, g.car.y, g.car.a, g.car.w, g.BrakeIn() > 0.1, g.paint);
+        DrawPuffs(C, g.smoke, lk);
+    });
     for (DesertChunk* ch : chunks)
         for (const Scen& d : ch->scen) if (d.t == SC_ARCH && visible(d.cx, d.cy, 400)) DrawArch(C, d, g.car.x, g.car.y);
     for (DesertChunk* ch : chunks)
@@ -505,17 +520,23 @@ static void AcrossMark(const Track& T, int q, Color col, float thick) {
 }
 
 // Scenery standing on the ground, sorted far to near; also notes where the lanterns are for the night glow.
-void DesertScene::DrawScenery(Game& g, const std::vector<const Scen*>& items, double hw, double hh) {
-    const Ctx C{lk, g.cam.x, g.cam.y, g.now};
+void DesertScene::DrawScenery(Game& g, const std::vector<const Scen*>& items, double hw, double hh, const std::function<void()>& drawCar) {
+    const Ctx C{lk, g, g.now};
+    // Depth, bigger drawn later: in isometric it is the position down the screen, so things in
+    // front cover the car; with the fake perspective it is nearness to the camera, and the car goes first.
+    const bool iso = g.up.x != 0 || g.up.y != 0;
+    auto depth = [&](double x, double y) { return iso ? x + y : -Hypot(x - g.cam.x, y - g.cam.y); };
     std::vector<std::pair<double, const Scen*>> vis;
     for (const Scen* d : items) {
         if (d->t == SC_OASIS || d->t == SC_BALLOON || d->t == SC_ARCH || d->t == SC_SALT || d->t == SC_PLATE || d->t == SC_TRAIL) continue;
-        if (std::fabs(d->cx - g.cam.x) < hw + 260 && std::fabs(d->cy - g.cam.y) < hh + 260) vis.push_back({Hypot(d->cx - g.cam.x, d->cy - g.cam.y), d});
-        if (d->t == SC_LANTERN && std::fabs(d->x - g.cam.x) < hw + 200 && std::fabs(d->y - g.cam.y) < hh + 200)
-            lamps.push_back({d->x + (d->x - g.cam.x) * d->ht, d->y + (d->y - g.cam.y) * d->ht});
+        if (std::fabs(d->cx - g.cam.x) < hw + 260 && std::fabs(d->cy - g.cam.y) < hh + 260) vis.push_back({depth(d->cx, d->cy), d});
+        if (d->t == SC_LANTERN && std::fabs(d->x - g.cam.x) < hw + 200 && std::fabs(d->y - g.cam.y) < hh + 200) lamps.push_back(g.TopOf(d->x, d->y, d->ht));
     }
-    std::stable_sort(vis.begin(), vis.end(), [](auto& a, auto& b) { return a.first > b.first; });
+    std::stable_sort(vis.begin(), vis.end(), [](auto& a, auto& b) { return a.first < b.first; });
+    const double carDepth = iso ? depth(g.car.x, g.car.y) : -1e18;
+    bool carDrawn = false;
     for (auto& [dist, dp] : vis) {
+        if (!carDrawn && dist >= carDepth) { drawCar(); carDrawn = true; }
         const Scen& d = *dp;
         switch (d.t) {
             case SC_ROCK: DrawRock(C, d); break;
@@ -531,6 +552,7 @@ void DesertScene::DrawScenery(Game& g, const std::vector<const Scen*>& items, do
             default: break;
         }
     }
+    if (!carDrawn) drawCar();
 }
 
 void DesertScene::Draw(Game& g, double hw, double hh) {
@@ -538,7 +560,7 @@ void DesertScene::Draw(Game& g, double hw, double hh) {
     if (free) { DrawFree(g, hw, hh); return; }
     const Track& T = *g.T;
     const double now = g.now;
-    const Ctx C{lk, g.cam.x, g.cam.y, now};
+    const Ctx C{lk, g, now};
     UpdateWeather(g, hw, hh, std::min(1.0 / 30, (double)GetFrameTime()));
     if (ground.id) DrawTexturePro(ground, {0, 0, (float)ground.width, (float)ground.height}, {(float)gx0, (float)gy0, (float)gw, (float)gh}, {0, 0}, 0, WHITE);
 
@@ -590,19 +612,19 @@ void DesertScene::Draw(Game& g, double hw, double hh) {
             draw::FillCircle((float)c.x, (float)c.y, 10, hit ? Hex(0x4fd66a) : Hex(0xff7a1a));
             draw::FillCircle((float)c.x, (float)c.y, 4, Hex(0xfff3e0));
         }
-    if (g.run) {   // ghost of the best run
-        double a;
-        bool ok;
-        const V2 p = g.GhostAt(g.state == ST_COUNT ? 0 : g.run->t, a, ok);
-        if (ok) { static const Paint ghostPaint = MakePaint(0xbfe9ff); g.DrawCar(p.x, p.y, a, 0, false, ghostPaint, 0.42f); }
-    }
-    g.DrawCar(g.car.x, g.car.y, g.car.a, g.car.w, g.BrakeIn() > 0.1, g.paint);
-    DrawPuffs(C, g.smoke, lk);
-
-    // scenery, far to near, then arches and balloons above everything
+    // scenery in depth order with the cars in it, then arches and balloons above everything
     std::vector<const Scen*> items;
     for (const Scen& d : scen) items.push_back(&d);
-    DrawScenery(g, items, hw, hh);
+    DrawScenery(g, items, hw, hh, [&] {
+        if (g.run) {   // ghost of the best run
+            double a;
+            bool ok;
+            const V2 p = g.GhostAt(g.state == ST_COUNT ? 0 : g.run->t, a, ok);
+            if (ok) { static const Paint ghostPaint = MakePaint(0xbfe9ff); g.DrawCar(p.x, p.y, a, 0, false, ghostPaint, 0.42f); }
+        }
+        g.DrawCar(g.car.x, g.car.y, g.car.a, g.car.w, g.BrakeIn() > 0.1, g.paint);
+        DrawPuffs(C, g.smoke, lk);
+    });
     for (const Scen& d : scen) if (d.t == SC_ARCH && visible(d.cx, d.cy, 400)) DrawArch(C, d, g.car.x, g.car.y);
     for (const Scen& d : scen)
         if (d.t == SC_BALLOON) { double x, y; balloonAt(d, x, y); if (visible(x, y, 400)) DrawBalloon(C, d, x, y, false); }
@@ -617,7 +639,7 @@ void DesertScene::Draw(Game& g, double hw, double hh) {
 // ---------- the screen pass: night light, colour grade, haze ----------
 void DesertScene::DrawScreen(Game& g) {
     const float W = g.W, H = g.H, z = (float)(g.cam.z * g.S);
-    auto toScreen = [&](double x, double y) { return Vector2{(float)(W / 2 + (x - g.cam.x) * z), (float)(H / 2 + (y - g.cam.y) * z)}; };
+    auto toScreen = [&](double x, double y) { return g.ToScreen(x, y); };
     const Vector2 carS = toScreen(g.car.x, g.car.y);
     if (lk.dark.a > 0) {
         // dark away from the headlights; then the lamps and the headlights add their glow
